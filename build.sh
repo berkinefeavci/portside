@@ -16,10 +16,14 @@ for argument in "$@"; do
   esac
 done
 
+swift build -c release --arch arm64 --arch x86_64
+
 # The compiler also writes every localizable key it sees (Text("…"), String(localized:), …)
-# so check-localizations can compare them with Localization/*.lproj.
+# so check-localizations can compare them with Localization/*.lproj. This is a separate,
+# single-architecture build: the universal one goes through Xcode's build system, which
+# ignores -emit-localized-strings-path in Xcode 26.
 # (kept between builds: an incremental build only rewrites the files it recompiles)
-swift build -c release --arch arm64 --arch x86_64 \
+swift build -c release \
   -Xswiftc -emit-localized-strings -Xswiftc -emit-localized-strings-path -Xswiftc "$PWD/.build/localized-strings"
 xcrun swift Tools/check-localizations.swift .build/localized-strings Localization
 
