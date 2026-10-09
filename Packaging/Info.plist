@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key><string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>tr</string>
+	</array>
+	<key>CFBundleExecutable</key><string>Portside</string>
+	<key>CFBundleIdentifier</key><string>io.github.berkinefeavci.portside</string>
+	<key>CFBundleName</key><string>Portside</string>
+	<key>CFBundleDisplayName</key><string>Portside</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>1.0.0</string>
+	<key>CFBundleVersion</key><string>1</string>
+	<key>CFBundleIconName</key><string>Portside</string>
+	<key>CFBundleIconFile</key><string>Portside</string>
+	<key>LSMinimumSystemVersion</key><string>14.0</string>
+	<key>LSUIElement</key><true/>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
+	<key>NSHumanReadableCopyright</key><string>© 2026 Berkin Efe Avcı. MIT License.</string>
+</dict>
+</plist>
