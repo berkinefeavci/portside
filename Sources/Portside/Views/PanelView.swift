@@ -59,7 +59,7 @@ struct PanelGlass: ViewModifier {
 
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if #available(macOS 26, *), !Self.flatForSnapshots {
+        if #available(macOS 26, *), !SelfTest.isSnapshot {
             content
                 .clipShape(shape)
                 .glassEffect(.regular.tint(.black.opacity(0.22)), in: shape)
@@ -73,9 +73,6 @@ struct PanelGlass: ViewModifier {
                 .clipShape(shape)
         }
     }
-
-    // ImageRenderer can't draw glass.
-    private static var flatForSnapshots: Bool { ProcessInfo.processInfo.environment["PORTSIDE_SNAPSHOT"] != nil }
 }
 
 // MARK: - Main page
@@ -277,13 +274,14 @@ struct EmptyStateView: View {
 // ImageRenderer leaves ScrollView blank, so the self-test snapshot lays it out flat.
 struct Scrollable<Content: View>: View {
     @ViewBuilder let content: Content
-    private static var flat: Bool { ProcessInfo.processInfo.environment["PORTSIDE_SNAPSHOT"] != nil }
 
     var body: some View {
-        if Self.flat {
+        if SelfTest.isSnapshot {
             content.frame(minHeight: 0, maxHeight: .infinity, alignment: .top).clipped()
         } else {
+            // The panel is small and the edges already fade, so no scroller.
             ScrollView { content }
+                .scrollIndicators(.never)
         }
     }
 }

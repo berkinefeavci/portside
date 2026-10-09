@@ -11,7 +11,7 @@
 ## Özellikler
 
 - **Önizlemeli kartlar:** her çalışan sunucu, sayfasının küçük görüntüsüyle bir kart: port, proje adı, çatı (Next.js, Vite, Django, FastAPI…) ve ne kadar süredir açık olduğu. Karta tıklayınca tarayıcıda açılır.
-- **Son kapatılanlar:** kapanan sunucunun kartı griye döner ve sayfasının son görüntüsüyle kalır. Tıklayınca yeniden başlar; port dinlenmeye başlayınca tarayıcıda açılır.
+- **Son kapatılanlar:** kapanan sunucunun kartı solar ama sayfasının son görüntüsüyle, renkli olarak kalır; neyin ne olduğu bir bakışta anlaşılır. Aynı proje farklı argümanlarla açılmışsa da projenin görüntüsü kullanılır. Tıklayınca yeniden başlar; port dinlenmeye başlayınca tarayıcıda açılır.
 - **Sayan menü çubuğu simgesi:** küçük bir pencere, içinde çalışan sunucu sayısı. Sayı değişince yuvarlanır, üstüne gelince sayar, sunucu açılırken yükleme çizgisi akar.
 - **Liquid Glass panel** (macOS 26 ve sonrası).
 - **Son kapatılanı aç:** başlıktaki ↩ düğmesi ya da her yerden ⌃⌥⌘T (isteğe bağlı kısayol).

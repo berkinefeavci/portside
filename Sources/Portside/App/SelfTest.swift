@@ -5,10 +5,14 @@ import SwiftUI
 //   PORTSIDE_SNAPSHOT=<file.png>     render the panel to a PNG
 //   PORTSIDE_PAGE=history|settings|about  which panel page to render (default: main)
 //   PORTSIDE_DEMO_ROOT=<folder>      only list servers under that folder (clean screenshots)
+//   PORTSIDE_DATA_DIR=<folder>       keep history and previews there instead of Application Support
 //   PORTSIDE_ICON_FRAMES=<folder>    write the menu bar glyph states as PNGs
 // The app quits when done.
 @MainActor
 enum SelfTest {
+    /// ImageRenderer can't draw glass, scroll views or text fields; views lay out a flat stand-in.
+    nonisolated static let isSnapshot = ProcessInfo.processInfo.environment["PORTSIDE_SNAPSHOT"] != nil
+
     static func runIfRequested(_ appState: AppState, _ scrollActivity: ScrollActivity) -> Bool {
         let env = ProcessInfo.processInfo.environment
         if let folder = env["PORTSIDE_ICON_FRAMES"] {

@@ -41,7 +41,7 @@ struct HistoryRowView: View {
         HStack(spacing: 0) {
             ColorBar(color: barColor, isWorking: isOpening)
 
-            PreviewThumb(entryID: entry.id, framework: entry.framework, port: entry.port, dimmed: !isRunning)
+            PreviewThumb(entryID: appState.previewID(for: entry), framework: entry.framework, port: entry.port, dimmed: !isRunning)
                 .frame(width: 58)
                 .padding(.trailing, 10)
 

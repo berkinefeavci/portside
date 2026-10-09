@@ -11,15 +11,13 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/panel.png" alt="Portside panel: running servers, a pinned server and recently closed servers" width="340">
-  &nbsp;
-  <img src="docs/screenshots/settings.png" alt="Portside settings" width="340">
+  <img src="docs/screenshots/hero.png" alt="Portside in the menu bar: running servers and recently closed servers, each with a picture of its page">
 </p>
 
 ## Features
 
 - **Running servers as cards, with a preview of each page.** Port, project name, framework (Next.js, Vite, Nuxt, Remix, Astro, Django, Flask, FastAPI, Rails, Go, Cargo, PHP, plain Python and more) and how long each one has been up. Click a card to open it in the browser.
-- **Recently Closed.** When a server stops, for whatever reason, its card turns grey and stays, showing the last picture of its page so you recognise it. Click it to start the server again; Portside opens it in your browser once it is listening.
+- **Recently Closed.** When a server stops, for whatever reason, its card fades and stays, still showing the last picture of its page so you recognise it at a glance. A server started again with different arguments keeps its project's picture. Click it to start the server again; Portside opens it in your browser once it is listening.
 - **A menu bar icon that counts.** A small browser window with the number of running servers inside. The number rolls when it changes, counts up when you point at it, and a loading bar runs while a server is starting.
 - **Liquid Glass panel** on macOS 26 and later.
 - **Reopen the last closed server** with the ↩ button, or with ⌃⌥⌘T from anywhere (optional shortcut).
@@ -33,6 +31,16 @@
 - **iOS Simulators:** booted simulators with the app running inside; relaunch the app or shut the simulator down.
 - **Quick actions** on right-click: Show in Finder, Open in Terminal, Copy Address, Copy Command, Open Output Log.
 - English and Türkçe; Portside follows your macOS language.
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/panel.png" alt="Main panel: running servers and recently closed servers" width="270">
+  &nbsp;
+  <img src="docs/screenshots/history.png" alt="History: searchable, grouped by day, pinned servers on top" width="270">
+  &nbsp;
+  <img src="docs/screenshots/settings.png" alt="Settings" width="270">
+</p>
 
 ## Install
 

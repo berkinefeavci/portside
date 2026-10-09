@@ -16,7 +16,7 @@ PORTSIDE_SNAPSHOT=/tmp/panel.png dist/Portside.app/Contents/MacOS/Portside      
 PORTSIDE_REOPEN="My Project" dist/Portside.app/Contents/MacOS/Portside              # reopen a history entry
 ```
 
-See `Sources/Portside/App/SelfTest.swift` for all switches.
+For screenshots, add `PORTSIDE_DEMO_ROOT=<folder>` to list only servers started under that folder and `PORTSIDE_DATA_DIR=<folder>` to keep their history and previews away from your own. See `Sources/Portside/App/SelfTest.swift` for all switches.
 
 ## Guidelines
 

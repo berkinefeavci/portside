@@ -83,10 +83,17 @@ struct HistoryPage: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-            TextField("Search project, port or command", text: $query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .focused($searchFocused)
+            if SelfTest.isSnapshot {
+                Text("Search project, port or command")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                TextField("Search project, port or command", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .focused($searchFocused)
+            }
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark.circle.fill")

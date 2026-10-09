@@ -76,10 +76,12 @@ struct HistoryEntry: Identifiable, Codable, Hashable {
 enum HistoryStore {
     static let limit = 200
 
-    /// Overridden by tests.
-    nonisolated(unsafe) static var directory: URL = FileManager.default
-        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("Portside", isDirectory: true)
+    /// Overridden by tests, and by PORTSIDE_DATA_DIR so demo screenshots don't touch your history.
+    nonisolated(unsafe) static var directory: URL = ProcessInfo.processInfo.environment["PORTSIDE_DATA_DIR"]
+        .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        ?? FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Portside", isDirectory: true)
 
     static var logDirectory: URL {
         FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
@@ -89,7 +91,6 @@ enum HistoryStore {
     static var file: URL { directory.appendingPathComponent("history.json") }
 
     static func load() -> [String: HistoryEntry] {
-        migrateFromLiman()
         guard let data = try? Data(contentsOf: file) else { return [:] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -114,15 +115,5 @@ enum HistoryStore {
         if (try? data.write(to: file, options: .atomic)) != nil {
             try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         }
-    }
-
-    /// Portside was called Liman during development; keep that history.
-    private static func migrateFromLiman() {
-        let fm = FileManager.default
-        let old = directory.deletingLastPathComponent().appendingPathComponent("Liman/history.json")
-        guard directory.lastPathComponent == "Portside",
-              !fm.fileExists(atPath: file.path), fm.fileExists(atPath: old.path) else { return }
-        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? fm.copyItem(at: old, to: file)
     }
 }

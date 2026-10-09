@@ -7,6 +7,8 @@ struct PreviewThumb: View {
     let entryID: String?
     let framework: Framework
     let port: Int
+    /// Shown on the stand-in; left out where the thumbnail is too small to read it.
+    var title: String?
     var dimmed = false
 
     static let aspect: CGFloat = 16.0 / 10.0
@@ -20,8 +22,9 @@ struct PreviewThumb: View {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .saturation(dimmed ? 0 : 1)
-                        .brightness(dimmed ? -0.12 : 0)
+                        // Faded, but still in colour: it has to be recognisable.
+                        .saturation(dimmed ? 0.55 : 1)
+                        .brightness(dimmed ? -0.06 : 0)
                 } else {
                     placeholder
                 }
@@ -39,9 +42,18 @@ struct PreviewThumb: View {
                 colors: [framework.color.opacity(dimmed ? 0.12 : 0.35), framework.color.opacity(dimmed ? 0.04 : 0.10)],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
-            Text(verbatim: ":\(port)")
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                .foregroundStyle(.white.opacity(dimmed ? 0.35 : 0.8))
+            VStack(spacing: 2) {
+                if let title {
+                    Text(verbatim: title)
+                        .font(.system(size: 13, weight: .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 8)
+                }
+                Text(verbatim: ":\(port)")
+                    .font(.system(size: title == nil ? 18 : 11, weight: .bold, design: .monospaced))
+            }
+            .foregroundStyle(.white.opacity(dimmed ? 0.45 : 0.85))
         }
     }
 }
@@ -146,7 +158,10 @@ struct RunningCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PreviewThumb(entryID: appState.entry(for: server)?.id, framework: server.framework, port: server.port)
+            PreviewThumb(
+                entryID: appState.entry(for: server).map(appState.previewID),
+                framework: server.framework, port: server.port, title: server.projectName
+            )
                 .overlay(alignment: .topTrailing) {
                     if isHovered && !isRestarting {
                         HStack(spacing: 4) {
@@ -202,7 +217,10 @@ struct ClosedCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PreviewThumb(entryID: entry.id, framework: entry.framework, port: entry.port, dimmed: true)
+            PreviewThumb(
+                entryID: appState.previewID(for: entry),
+                framework: entry.framework, port: entry.port, title: entry.projectName, dimmed: true
+            )
                 .overlay {
                     if isOpening {
                         ProgressView().controlSize(.small)

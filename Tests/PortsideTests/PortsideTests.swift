@@ -210,3 +210,59 @@ final class RunCountTests: XCTestCase {
         XCTAssertEqual(e.runCount, 2)
     }
 }
+
+final class PreviewFallbackTests: XCTestCase {
+    private var original: URL!
+    private var temp: URL!
+
+    override func setUp() {
+        original = HistoryStore.directory
+        temp = FileManager.default.temporaryDirectory.appendingPathComponent("PortsideTests-\(UUID().uuidString)")
+        HistoryStore.directory = temp
+    }
+
+    override func tearDown() {
+        HistoryStore.directory = original
+        try? FileManager.default.removeItem(at: temp)
+    }
+
+    private func entry(_ id: String, path: String = "/site", port: Int, seen: TimeInterval) -> HistoryEntry {
+        HistoryEntry(
+            id: id, projectName: "Site", projectPath: path, port: port, framework: .vite, executable: "/bin/node",
+            arguments: [], environment: [:], displayCommand: "", customCommand: nil,
+            firstSeen: Date(timeIntervalSince1970: seen), lastSeen: Date(timeIntervalSince1970: seen),
+            lastStopped: nil, lastStarted: nil, runCount: 1, isPinned: false
+        )
+    }
+
+    @MainActor
+    private func writePreview(for id: String) throws {
+        try FileManager.default.createDirectory(at: PreviewStore.directory, withIntermediateDirectories: true)
+        let image = NSImage(size: NSSize(width: 4, height: 4), flipped: false) { rect in
+            NSColor.red.setFill(); rect.fill(); return true
+        }
+        let bitmap = NSBitmapImageRep(data: image.tiffRepresentation!)!
+        try bitmap.representation(using: .jpeg, properties: [:])!.write(to: PreviewStore.file(for: HistoryEntry.fileKey(for: id)))
+    }
+
+    @MainActor
+    func testClosedServerBorrowsItsProjectsPicture() throws {
+        let state = AppState(polling: false)
+        let fresh = entry("fresh", port: 5174, seen: 300)
+        state.history = [
+            "fresh": fresh,
+            "old-other-port": entry("old-other-port", port: 5173, seen: 100),
+            "old-same-port": entry("old-same-port", port: 5174, seen: 50),
+            "elsewhere": entry("elsewhere", path: "/other", port: 5174, seen: 200),
+        ]
+        XCTAssertEqual(state.previewID(for: fresh), "fresh", "nothing to borrow")
+
+        try writePreview(for: "old-other-port")
+        try writePreview(for: "old-same-port")
+        try writePreview(for: "elsewhere")
+        XCTAssertEqual(state.previewID(for: fresh), "old-same-port", "same folder, same port first; never another folder")
+
+        try writePreview(for: "fresh")
+        XCTAssertEqual(state.previewID(for: fresh), "fresh")
+    }
+}

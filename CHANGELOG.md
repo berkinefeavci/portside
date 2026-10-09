@@ -5,7 +5,7 @@
 First public release.
 
 - Running dev servers as cards with a preview of each page; open, restart or stop them.
-- Closed servers keep the last picture of their page.
+- Closed servers keep the last picture of their page, in colour; a server started again with other arguments keeps its project's picture.
 - Menu bar icon: a small window with the number of running servers that rolls, counts on hover and shows a loading bar while a server starts.
 - Liquid Glass panel on macOS 26 and later.
 - Recently Closed and a searchable, day-grouped History: reopen any server Portside has seen with its original command, folder and environment.

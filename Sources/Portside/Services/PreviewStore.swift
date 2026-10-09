@@ -37,6 +37,14 @@ final class PreviewStore {
         return image
     }
 
+    func hasImage(for entryID: String) -> Bool {
+        _ = version
+        guard isEnabled else { return false }
+        let key = HistoryEntry.fileKey(for: entryID)
+        return cache.object(forKey: key as NSString) != nil
+            || FileManager.default.fileExists(atPath: Self.file(for: key).path)
+    }
+
     /// Queues a capture unless one was taken within `maxAge`.
     func capture(entryID: String, port: Int, maxAge: TimeInterval) {
         guard isEnabled, let url = URL(string: "http://localhost:\(port)/") else { return }

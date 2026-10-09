@@ -62,6 +62,18 @@ final class AppState {
         pidKeys[server.pid].flatMap { history[$0] }
     }
 
+    /// The entry whose page picture stands for `entry`: its own, or else the newest one
+    /// taken in the same folder (same port first). A server started with other arguments
+    /// is a new entry, and it shouldn't lose its picture for that.
+    func previewID(for entry: HistoryEntry) -> String {
+        let previews = PreviewStore.shared
+        if previews.hasImage(for: entry.id) { return entry.id }
+        return history.values
+            .filter { $0.projectPath == entry.projectPath && $0.id != entry.id }
+            .sorted { ($0.port == entry.port ? 1 : 0, $0.lastSeen) > ($1.port == entry.port ? 1 : 0, $1.lastSeen) }
+            .first { previews.hasImage(for: $0.id) }?.id ?? entry.id
+    }
+
     func isRunning(_ entry: HistoryEntry) -> Bool { runningKeys.contains(entry.id) }
 
     private var closed: [HistoryEntry] {
@@ -136,7 +148,7 @@ final class AppState {
 
     // MARK: - Previews
 
-    private static let backgroundPreviewAge: TimeInterval = 600
+    private static let backgroundPreviewAge: TimeInterval = 300
     private static let previewWarmUp: TimeInterval = 5
 
     /// Captures pages of running servers whose picture is older than `maxAge`,
