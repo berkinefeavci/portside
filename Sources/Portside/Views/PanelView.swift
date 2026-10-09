@@ -1,10 +1,12 @@
 import SwiftUI
 
 struct PanelView: View {
-    static let panelSize = CGSize(width: 340, height: 480)
+    static let panelSize = CGSize(width: 340, height: 500)
+    static let cornerRadius: CGFloat = 22
 
     @Environment(AppState.self) private var appState
     @State private var page: Page = .main
+    @State private var returnPage: Page = .main
 
     enum Page { case main, history, settings, about, editCommand }
 
@@ -30,14 +32,7 @@ struct PanelView: View {
                 .panelPage(isActive: page == .editCommand, restingOffset: 24)
         }
         .frame(width: Self.panelSize.width, height: Self.panelSize.height)
-        // Material alone takes the wallpaper's colour; the ground pins the
-        // panel to something the wallpaper only tints.
-        .background {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(Color.panelGround.opacity(0.80))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .modifier(PanelGlass(cornerRadius: Self.cornerRadius))
         .onChange(of: appState.editingEntryID) { previous, editing in
             if editing != nil {
                 returnPage = page == .editCommand ? returnPage : page
@@ -51,58 +46,76 @@ struct PanelView: View {
             page = .main
         }
     }
-
-    @State private var returnPage: Page = .main
 }
 
 extension Notification.Name {
     static let panelClosed = Notification.Name("PortsidePanelClosed")
 }
 
+/// Liquid Glass on macOS 26 and later, the same as the other menu bar apps;
+/// a dark material before that.
+struct PanelGlass: ViewModifier {
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        if #available(macOS 26, *), !Self.flatForSnapshots {
+            content
+                .clipShape(shape)
+                .glassEffect(.regular.tint(.black.opacity(0.22)), in: shape)
+        } else {
+            content
+                .background {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(Color.panelGround.opacity(0.80))
+                }
+                .clipShape(shape)
+        }
+    }
+
+    // ImageRenderer can't draw glass.
+    private static var flatForSnapshots: Bool { ProcessInfo.processInfo.environment["PORTSIDE_SNAPSHOT"] != nil }
+}
+
 // MARK: - Main page
 
 private extension PanelView {
+    static let closedCardLimit = 4
+
     var mainPage: some View {
         VStack(spacing: 0) {
             header
-            PanelDivider()
             content
-            PanelDivider()
-            footer
         }
     }
 
     var header: some View {
         HStack(spacing: 8) {
             Text(verbatim: "Portside")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
 
             if !appState.visibleServers.isEmpty {
                 Text("\(appState.visibleServers.count) running")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(Color.running)
                     .lineLimit(1)
             }
 
             Spacer()
 
-            if let last = appState.lastClosed {
-                Button {
-                    appState.reopenLastClosed()
-                } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 26, height: 26)
-                        .background(.primary.opacity(0.08), in: Circle())
-                        .contentShape(Circle())
+            HStack(spacing: 6) {
+                if let last = appState.lastClosed {
+                    HeaderButton(symbol: "arrow.uturn.backward", help: "Reopen last closed: \(last.projectName)") {
+                        appState.reopenLastClosed()
+                    }
                 }
-                .buttonStyle(.plain)
-                .help(Text("Reopen last closed: \(last.projectName)"))
-                .accessibilityLabel(Text("Reopen last closed"))
+                HeaderButton(symbol: "magnifyingglass", help: "History") { page = .history }
+                HeaderButton(symbol: "gearshape.fill", help: "Settings") { page = .settings }
             }
         }
         .padding(.horizontal, 16)
-        .frame(height: 46)
+        .frame(height: 52)
     }
 
     @ViewBuilder
@@ -116,50 +129,22 @@ private extension PanelView {
                 .transition(.opacity)
         } else {
             Scrollable {
-                VStack(spacing: 14) {
-                    if !appState.visibleServers.isEmpty {
-                        section("RUNNING", icon: "bolt.horizontal",
-                                action: appState.visibleServers.count > 1 ? "Stop All" : nil,
-                                tint: .alert) { appState.stopAllServers() } rows: {
-                            ForEach(appState.visibleServers) { ServerRowView(server: $0).transition(rowTransition) }
-                        }
-                    } else {
-                        Text("No dev servers running right now.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 4)
-                    }
-
-                    if !appState.pinnedClosed.isEmpty {
-                        section("PINNED", icon: "pin", action: nil) {} rows: {
-                            ForEach(appState.pinnedClosed) { HistoryRowView(entry: $0).transition(rowTransition) }
-                        }
-                    }
-
-                    if !appState.recentlyClosed.isEmpty {
-                        section("RECENTLY CLOSED", icon: "clock.arrow.circlepath",
-                                action: "Show All", tint: .accent) { page = .history } rows: {
-                            ForEach(appState.recentlyClosed) { HistoryRowView(entry: $0).transition(rowTransition) }
-                        }
-                    }
-
-                    if !appState.simulators.isEmpty {
-                        section("SIMULATORS", icon: "iphone",
-                                action: appState.simulators.count > 1 ? "Shut Down All" : nil,
-                                tint: .alert) { appState.shutDownAllSimulators() } rows: {
-                            ForEach(appState.simulators) { SimulatorRowView(simulator: $0).transition(rowTransition) }
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 16) {
+                    runningSection
+                    closedSection
+                    simulatorSection
                 }
-                .padding(12)
+                .padding(.horizontal, 12)
+                .padding(.top, 2)
+                .padding(.bottom, 14)
             }
             .mask(
                 LinearGradient(
                     stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: 0.965),
-                        .init(color: .black.opacity(0.55), location: 1)
+                        .init(color: .black.opacity(0.4), location: 0),
+                        .init(color: .black, location: 0.025),
+                        .init(color: .black, location: 0.94),
+                        .init(color: .black.opacity(0.3), location: 1)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -169,54 +154,102 @@ private extension PanelView {
         }
     }
 
-    var rowTransition: AnyTransition {
-        .asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity)
-    }
-
-    func section<Rows: View>(
-        _ title: LocalizedStringKey,
-        icon: String,
-        action: LocalizedStringKey?,
-        tint: Color = .alert,
-        perform: @escaping () -> Void,
-        @ViewBuilder rows: () -> Rows
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 9))
-                    .frame(width: 12)
-                Text(title)
-                    .font(.system(size: 10, weight: .medium))
-                    .tracking(0.8)
-                    .lineLimit(1)
-                Spacer()
-                if let action {
-                    Button(action: perform) {
-                        Text(action)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(tint)
-                            .lineLimit(1)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+    @ViewBuilder
+    var runningSection: some View {
+        let servers = appState.visibleServers
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("RUNNING", action: servers.count > 1 ? "Stop All" : nil, tint: .alert) {
+                appState.stopAllServers()
             }
-            .foregroundStyle(.secondary.opacity(0.7))
-            .padding(.horizontal, 4)
-
-            rows()
+            if servers.isEmpty {
+                Text("No dev servers running right now.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            } else {
+                CardGrid(items: servers) { RunningCard(server: $0) }
+                FailureNotes(failures: servers.compactMap { server in
+                    guard case .failed(let message) = appState.restartStates[server.port] else { return nil }
+                    return ("\(server.port)", server.projectName, message)
+                })
+            }
         }
     }
 
-    var footer: some View {
-        VStack(spacing: 0) {
-            PanelRow("History", detail: appState.allHistory.isEmpty ? nil : "\(appState.allHistory.count)") { page = .history }
-            PanelDivider()
-            PanelRow("Settings") { page = .settings }
-            PanelDivider()
-            PanelRow("Quit Portside") { NSApplication.shared.terminate(nil) }
+    @ViewBuilder
+    var closedSection: some View {
+        let closed = appState.closedCards(limit: Self.closedCardLimit)
+        if !closed.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                sectionHeader("RECENTLY CLOSED", action: "History ›", tint: .accent) { page = .history }
+                CardGrid(items: closed) { ClosedCard(entry: $0) }
+                FailureNotes(failures: closed.compactMap { entry in
+                    guard case .failed(let message) = appState.openStates[entry.id] else { return nil }
+                    return (entry.id, entry.projectName, message)
+                })
+            }
         }
+    }
+
+    @ViewBuilder
+    var simulatorSection: some View {
+        if !appState.simulators.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                sectionHeader("SIMULATORS", action: appState.simulators.count > 1 ? "Shut Down All" : nil, tint: .alert) {
+                    appState.shutDownAllSimulators()
+                }
+                ForEach(appState.simulators) { SimulatorRowView(simulator: $0) }
+            }
+        }
+    }
+
+    func sectionHeader(
+        _ title: LocalizedStringKey,
+        action: LocalizedStringKey?,
+        tint: Color,
+        perform: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.8)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+            if let action {
+                Button(action: perform) {
+                    Text(action)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .lineLimit(1)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+/// Round toolbar button; glass on macOS 26 and later.
+struct HeaderButton: View {
+    let symbol: String
+    let help: LocalizedStringKey
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Color.white.opacity(isHovered ? 0.16 : 0.09)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .help(Text(help))
+        .accessibilityLabel(Text(help))
     }
 }
 
@@ -225,10 +258,10 @@ private extension PanelView {
 struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "sailboat")
-                .font(.system(size: 30, weight: .light))
+            Image(nsImage: MenuBarIconRenderer.image(MenuBarIconState(), size: NSSize(width: 44, height: 32)))
+                .renderingMode(.template)
                 .foregroundStyle(.tertiary)
-            Text("Nothing in port")
+            Text("Nothing running")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
             Text("Start a dev server and it shows up here. When it stops, it stays in your history, one click away from running again.")

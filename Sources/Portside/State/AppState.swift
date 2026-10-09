@@ -78,6 +78,15 @@ final class AppState {
         Array(closed.filter { !$0.isPinned }.prefix(Self.recentLimit))
     }
 
+    /// Pinned servers first, then the most recently closed ones.
+    func closedCards(limit: Int) -> [HistoryEntry] {
+        Array((pinnedClosed + recentlyClosed).prefix(limit))
+    }
+
+    var hasWorkInFlight: Bool {
+        openStates.values.contains(.working) || restartStates.values.contains(.working)
+    }
+
     var allHistory: [HistoryEntry] {
         history.values
             .filter { !ignoredPaths.contains($0.projectPath) }
@@ -122,6 +131,23 @@ final class AppState {
 
         launched = launched.filter { $0.value.isRunning || runningKeys.contains($0.key) }
         if isInitialLoad { isInitialLoad = false }
+        refreshPreviews(maxAge: Self.backgroundPreviewAge)
+    }
+
+    // MARK: - Previews
+
+    private static let backgroundPreviewAge: TimeInterval = 600
+    private static let previewWarmUp: TimeInterval = 5
+
+    /// Captures pages of running servers whose picture is older than `maxAge`,
+    /// giving a fresh server a few seconds to finish its first build.
+    func refreshPreviews(maxAge: TimeInterval) {
+        let now = Date()
+        for server in visibleServers {
+            guard let id = pidKeys[server.pid] else { continue }
+            if let started = server.startedAt, now.timeIntervalSince(started) < Self.previewWarmUp { continue }
+            PreviewStore.shared.capture(entryID: id, port: server.port, maxAge: maxAge)
+        }
     }
 
     private func preservingRestartingRows(_ scanned: [DevServer]) -> [DevServer] {
@@ -269,13 +295,14 @@ final class AppState {
             openStates[entry.id] = nil
             history[entry.id] = nil
         }
+        PreviewStore.shared.forget(entryID: entry.id)
         HistoryStore.save(history)
     }
 
     func clearHistory() {
-        withAnimation(.easeOut(duration: 0.25)) {
-            history = history.filter { $0.value.isPinned || runningKeys.contains($0.key) }
-        }
+        let kept = history.filter { $0.value.isPinned || runningKeys.contains($0.key) }
+        for id in history.keys where kept[id] == nil { PreviewStore.shared.forget(entryID: id) }
+        withAnimation(.easeOut(duration: 0.25)) { history = kept }
         HistoryStore.save(history)
     }
 
@@ -376,10 +403,8 @@ final class AppState {
     }
 
     static func logName(for entry: HistoryEntry) -> String {
-        // Stable across launches, unlike `hashValue`.
-        let hash = entry.id.utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 }
         let base = entry.projectName.replacingOccurrences(of: " ", with: "-")
-        return "\(base)-\(String(hash, radix: 36))"
+        return "\(base)-\(HistoryEntry.fileKey(for: entry.id))"
     }
 
     func logURL(for entry: HistoryEntry) -> URL? {

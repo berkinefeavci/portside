@@ -40,7 +40,6 @@
 "No history yet." = "Henüz geçmiş yok.";
 "No matching servers." = "Eşleşen sunucu yok.";
 "Not allowed" = "İzin yok";
-"Nothing in port" = "Limanda gemi yok";
 "OLDER" = "DAHA ESKİ";
 "Open Output Log" = "Çıktı kaydını aç";
 "Open at login" = "Mac açılınca başlat";
@@ -59,7 +58,6 @@
 "Relaunch app" = "Uygulamayı yeniden aç";
 "Remove from History" = "Geçmişten sil";
 "Reopen" = "Yeniden aç";
-"Reopen last closed" = "Son kapatılanı aç";
 "Reopen last closed: %@" = "Son kapatılanı aç: %@";
 "Report an Issue" = "Sorun bildir";
 "Restart" = "Yeniden başlat";
@@ -70,7 +68,6 @@
 "Search project, port or command" = "Proje, port ya da komut ara";
 "Server" = "Sunucu";
 "Settings" = "Ayarlar";
-"Show All" = "Tümünü göster";
 "Show Hidden Projects" = "Gizli projeleri göster";
 "Show History File" = "Geçmiş dosyasını göster";
 "Show Output Logs" = "Çıktı kayıtlarını göster";
@@ -103,3 +100,7 @@
 "running" = "çalışıyor";
 "starting…" = "açılıyor…";
 "⌃⌥⌘P panel · ⌃⌥⌘T reopen last closed" = "⌃⌥⌘P panel · ⌃⌥⌘T son kapatılanı aç";
+"History ›" = "Geçmiş ›";
+"Nothing running" = "Çalışan sunucu yok";
+"Pictures of each page, kept on this Mac" = "Her sayfanın görüntüsü, yalnız bu Mac'te";
+"Site previews" = "Site önizlemeleri";

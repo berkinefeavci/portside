@@ -59,7 +59,7 @@ struct ServerRowView: View {
             guard failureMessage == nil else { return }
             appState.openInBrowser(server)
         }
-        .contextMenu { menu }
+        .contextMenu { ServerMenu(server: server) }
         .help(Text(verbatim: server.projectPath))
     }
 
@@ -98,26 +98,4 @@ struct ServerRowView: View {
         }
     }
 
-    @ViewBuilder
-    private var menu: some View {
-        Button("Open in Browser") { appState.openInBrowser(server) }
-        Button("Copy Address") { appState.copyToClipboard(text: "http://localhost:\(server.port)") }
-        Divider()
-        Button("Show in Finder") { appState.revealInFinder(server.projectPath) }
-        Button("Open in Terminal") { appState.openInTerminal(server.projectPath) }
-        if let entry = appState.entry(for: server) {
-            Button("Copy Command") { appState.copyToClipboard(text: entry.shellCommand) }
-            Button("Edit Command…") { appState.editingEntryID = entry.id }
-            if entry.isPinned {
-                Button("Unpin") { appState.togglePin(entry) }
-            } else {
-                Button("Pin") { appState.togglePin(entry) }
-            }
-        }
-        Divider()
-        Button("Restart") { appState.restart(server) }
-        Button("Stop") { appState.stop(server) }
-        Divider()
-        Button("Hide This Project") { appState.ignore(projectPath: server.projectPath) }
-    }
 }

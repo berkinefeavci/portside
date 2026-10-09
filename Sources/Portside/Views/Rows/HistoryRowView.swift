@@ -41,6 +41,10 @@ struct HistoryRowView: View {
         HStack(spacing: 0) {
             ColorBar(color: barColor, isWorking: isOpening)
 
+            PreviewThumb(entryID: entry.id, framework: entry.framework, port: entry.port, dimmed: !isRunning)
+                .frame(width: 58)
+                .padding(.trailing, 10)
+
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(verbatim: entry.projectName)
@@ -83,7 +87,7 @@ struct HistoryRowView: View {
             guard failureMessage == nil else { return }
             appState.reopen(entry)
         }
-        .contextMenu { menu }
+        .contextMenu { HistoryMenu(entry: entry) }
         .help(Text(verbatim: "\(entry.projectPath)\n\(entry.shellCommand)"))
     }
 
@@ -135,30 +139,4 @@ struct HistoryRowView: View {
         }
     }
 
-    @ViewBuilder
-    private var menu: some View {
-        if isRunning {
-            Button("Open in Browser") { appState.reopen(entry) }
-        } else {
-            Button("Reopen") { appState.reopen(entry) }
-        }
-        Divider()
-        Button("Show in Finder") { appState.revealInFinder(entry.projectPath) }
-        Button("Open in Terminal") { appState.openInTerminal(entry.projectPath) }
-        Button("Copy Command") { appState.copyToClipboard(text: entry.shellCommand) }
-        Button("Edit Command…") { appState.editingEntryID = entry.id }
-        if appState.logURL(for: entry) != nil {
-            Button("Open Output Log") { appState.openLog(entry) }
-        }
-        Divider()
-        if entry.isPinned {
-            Button("Unpin") { appState.togglePin(entry) }
-        } else {
-            Button("Pin") { appState.togglePin(entry) }
-        }
-        Button("Hide This Project") { appState.ignore(projectPath: entry.projectPath) }
-        if !isRunning {
-            Button("Remove from History") { appState.forget(entry) }
-        }
-    }
 }

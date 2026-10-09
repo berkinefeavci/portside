@@ -5,11 +5,17 @@ import SwiftUI
 //   PORTSIDE_SNAPSHOT=<file.png>     render the panel to a PNG
 //   PORTSIDE_PAGE=history|settings|about  which panel page to render (default: main)
 //   PORTSIDE_DEMO_ROOT=<folder>      only list servers under that folder (clean screenshots)
+//   PORTSIDE_ICON_FRAMES=<folder>    write the menu bar glyph states as PNGs
 // The app quits when done.
 @MainActor
 enum SelfTest {
     static func runIfRequested(_ appState: AppState, _ scrollActivity: ScrollActivity) -> Bool {
         let env = ProcessInfo.processInfo.environment
+        if let folder = env["PORTSIDE_ICON_FRAMES"] {
+            writeIconFrames(to: folder)
+            NSApp.terminate(nil)
+            return true
+        }
         guard env["PORTSIDE_REOPEN"] != nil || env["PORTSIDE_SNAPSHOT"] != nil else { return false }
 
         Task {
@@ -36,6 +42,24 @@ enum SelfTest {
             NSApp.terminate(nil)
         }
         return true
+    }
+
+    /// Menu bar glyph states at 8× for review.
+    private static func writeIconFrames(to folder: String) {
+        let states: [(String, MenuBarIconState)] = [
+            ("idle", MenuBarIconState()),
+            ("two", MenuBarIconState(count: 2, previousCount: 2)),
+            ("rolling", MenuBarIconState(count: 3, previousCount: 2, roll: 0.5)),
+            ("loading", MenuBarIconState(count: 2, previousCount: 2, sweep: 0.55)),
+            ("twelve", MenuBarIconState(count: 12, previousCount: 12)),
+        ]
+        for (name, state) in states {
+            let size = NSSize(width: MenuBarIconRenderer.menuBarSize.width * 8, height: MenuBarIconRenderer.menuBarSize.height * 8)
+            let image = MenuBarIconRenderer.image(state, size: size)
+            guard let tiff = image.tiffRepresentation,
+                  let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { continue }
+            try? png.write(to: URL(fileURLWithPath: folder).appendingPathComponent("\(name).png"))
+        }
     }
 
     private static func snapshot(_ appState: AppState, _ scrollActivity: ScrollActivity, page: String?, to path: String) {

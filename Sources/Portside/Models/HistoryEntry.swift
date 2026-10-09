@@ -54,6 +54,13 @@ struct HistoryEntry: Identifiable, Codable, Hashable {
 
     var localhostURL: URL? { URL(string: "http://localhost:\(port)") }
 
+    /// Short, stable name for files that belong to an entry (logs, previews).
+    static func fileKey(for id: String) -> String {
+        // Stable across launches, unlike `hashValue`.
+        let hash = id.utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 }
+        return String(hash, radix: 36)
+    }
+
     static func makeID(projectPath: String, executable: String?, arguments: [String]) -> String {
         ([projectPath, executable ?? "?"] + arguments).joined(separator: "\u{1F}")
     }

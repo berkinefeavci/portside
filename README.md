@@ -18,8 +18,10 @@
 
 ## Features
 
-- **Running servers at a glance.** Port, project name, framework (Next.js, Vite, Nuxt, Remix, Astro, Django, Flask, FastAPI, Rails, Go, Cargo, PHP, plain Python and more) and how long each one has been up. Click a row to open it in the browser.
-- **Recently Closed.** When a server stops, for whatever reason, it moves to Recently Closed instead of disappearing. Click it to start it again. Portside opens it in your browser once it is listening.
+- **Running servers as cards, with a preview of each page.** Port, project name, framework (Next.js, Vite, Nuxt, Remix, Astro, Django, Flask, FastAPI, Rails, Go, Cargo, PHP, plain Python and more) and how long each one has been up. Click a card to open it in the browser.
+- **Recently Closed.** When a server stops, for whatever reason, its card turns grey and stays, showing the last picture of its page so you recognise it. Click it to start the server again; Portside opens it in your browser once it is listening.
+- **A menu bar icon that counts.** A small browser window with the number of running servers inside. The number rolls when it changes, counts up when you point at it, and a loading bar runs while a server is starting.
+- **Liquid Glass panel** on macOS 26 and later.
 - **Reopen the last closed server** with the ↩ button, or with ⌃⌥⌘T from anywhere (optional shortcut).
 - **History** of every server Portside has seen: grouped by day and searchable by project, port or command. Keeps up to 200 servers; pinned ones never age out.
 - **Pin** the servers you start every day so they stay at the top.
@@ -36,7 +38,7 @@
 
 1. Download `Portside-x.y.z.dmg` from the [latest release](../../releases/latest).
 2. Open it and drag **Portside** to **Applications**.
-3. Open Portside. A sailboat appears in the menu bar and the panel opens once to show you where it lives.
+3. Open Portside. A small window icon appears in the menu bar and the panel opens once to show you where it lives.
 
 Releases are signed with a Developer ID and notarized by Apple. Portside runs on macOS 14 Sonoma or later, on Apple Silicon and Intel Macs.
 
@@ -53,13 +55,16 @@ Portside checks every 3 seconds with standard macOS tools and APIs:
 
 ## Privacy and what is stored
 
-Portside makes **no network requests** and has no analytics. Everything stays on your Mac:
+Portside has no analytics and talks to no server of its own. Everything stays on your Mac:
 
 | What | Where |
 |---|---|
 | History (folder, command, environment, port, timestamps) | `~/Library/Application Support/Portside/history.json` (readable only by you, `0600`) |
 | Output of servers Portside started | `~/Library/Logs/Portside/` |
+| Page previews (small JPEGs) | `~/Library/Application Support/Portside/Previews/` |
 | Settings, hidden projects | `UserDefaults` (`io.github.berkinefeavci.portside`) |
+
+**Site previews** open each running server's page (`http://localhost:<port>`) in a hidden web view for a moment, the way a browser tab would. Pages that load fonts, scripts or analytics from the internet will do so then too. Turn previews off in Settings to stop this and delete the saved pictures.
 
 Environment variables whose names look secret (containing `SECRET`, `TOKEN`, `PASSWORD`, `API_KEY`, `PRIVATE`, `CREDENTIAL`, `AUTH`, `COOKIE`, `SESSION`) are **never written** to the history file. A server that needs such a value from your shell (not from a `.env` file) may fail to reopen. Use **Edit Command…** to run it through your login shell, which loads your usual environment. See [PRIVACY.md](PRIVACY.md).
 

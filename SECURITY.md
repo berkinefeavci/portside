@@ -8,7 +8,7 @@ Include your macOS version, Portside version (Settings → About Portside) and s
 
 ## What Portside can do on your Mac
 
-Portside is not sandboxed, because it has to see other processes and start servers in your project folders. It runs with your user's permissions only: no privileged helper, no root, no network listener and no network requests.
+Portside is not sandboxed, because it has to see other processes and start servers in your project folders. It runs with your user's permissions only: no privileged helper, no root and no network listener. Its only network traffic is loading your own `localhost` pages for site previews (see PRIVACY.md).
 
 - It **reads** process information (`lsof`, `ps`, `sysctl KERN_PROCARGS2`) for processes listening on TCP ports.
 - It **starts** programs you have already run yourself, in the same folder, with the arguments and environment they had, or the command you typed in **Edit Command…**.

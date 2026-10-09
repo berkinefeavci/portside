@@ -8,6 +8,7 @@ struct SettingsPage: View {
     @Environment(AppState.self) private var appState
     @State private var launchAtLogin = LoginItem.isEnabled
     @State private var shortcuts = HotKeys.isEnabled
+    @State private var previews = PreviewStore.shared.isEnabled
     @State private var failure: String?
     @State private var accessibilityTrusted = AXAccess.isTrusted
 
@@ -31,6 +32,9 @@ struct SettingsPage: View {
             PanelDivider()
 
             PanelToggleRow("Open in browser after reopening", isOn: $appState.openBrowserAfterReopen)
+            PanelDivider()
+
+            PanelToggleRow("Site previews", note: "Pictures of each page, kept on this Mac", isOn: $previews)
             PanelDivider()
 
             PanelToggleRow("Keyboard shortcuts",
@@ -67,9 +71,20 @@ struct SettingsPage: View {
             PanelDivider()
 
             Spacer()
+
+            PanelDivider()
+            PanelRow("Quit Portside") { NSApplication.shared.terminate(nil) }
         }
         .onChange(of: launchAtLogin) { _, enabled in apply(enabled) }
         .onChange(of: shortcuts) { _, enabled in HotKeys.isEnabled = enabled }
+        .onChange(of: previews) { _, enabled in
+            PreviewStore.shared.isEnabled = enabled
+            if enabled {
+                appState.refreshPreviews(maxAge: 0)
+            } else {
+                PreviewStore.shared.removeAll()
+            }
+        }
         .onChange(of: isVisible) { _, visible in
             guard visible else { return }
             accessibilityTrusted = AXAccess.isTrusted

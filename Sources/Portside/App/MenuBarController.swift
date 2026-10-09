@@ -17,7 +17,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     private var clickMonitor: Any?
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
-    private var lastIconActive: Bool?
+    private var icon: MenuBarIconAnimator!
+    private let hoverTarget = HoverTarget()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The panel floats over an uncontrolled wallpaper: a light appearance
@@ -30,7 +31,16 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
             button.action = #selector(togglePanel)
             button.target = self
             button.setAccessibilityLabel("Portside")
+            button.imagePosition = .imageOnly
+            hoverTarget.onEnter = { [weak self] in self?.icon.hover() }
+            button.addTrackingArea(NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: hoverTarget,
+                userInfo: nil
+            ))
         }
+        icon = MenuBarIconAnimator(button: statusItem.button)
         updateIcon()
 
         let hostingView = NSHostingView(rootView:
@@ -52,11 +62,12 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.isMovable = false
-        panel.hasShadow = true
+        // Liquid Glass draws its own edge and shadow.
+        panel.hasShadow = false
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
 
-        Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updateIcon() }
         }
 
@@ -75,13 +86,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     }
 
     private func updateIcon() {
-        let active = appState?.isActive ?? false
-        guard active != lastIconActive, let button = statusItem.button else { return }
-        lastIconActive = active
-        let image = NSImage(systemSymbolName: active ? "sailboat.fill" : "sailboat",
-                            accessibilityDescription: "Portside")
-        image?.isTemplate = true
-        button.image = image?.withSymbolConfiguration(.init(pointSize: 14, weight: .medium))
+        guard let appState else { return }
+        icon.update(count: appState.visibleServers.count, busy: appState.hasWorkInFlight)
     }
 
     @objc private func togglePanel() {
@@ -106,7 +112,10 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
             panel.animator().alphaValue = 1
         }
         growFromMenuBar()
-        Task { await appState.refresh() }
+        Task {
+            await appState.refresh()
+            appState.refreshPreviews(maxAge: 60)
+        }
 
         removeMonitors()
         // Global monitors never see clicks on our own status item, so a

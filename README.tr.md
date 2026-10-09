@@ -10,8 +10,10 @@
 
 ## Özellikler
 
-- **Çalışan sunucular:** port, proje adı, çatı (Next.js, Vite, Nuxt, Django, FastAPI, Rails…) ve ne kadar süredir açık olduğu. Satıra tıklayınca tarayıcıda açılır.
-- **Son kapatılanlar:** kapanan sunucu kaybolmaz, buraya geçer. Tıklayınca yeniden başlar; port dinlenmeye başlayınca tarayıcıda açılır.
+- **Önizlemeli kartlar:** her çalışan sunucu, sayfasının küçük görüntüsüyle bir kart: port, proje adı, çatı (Next.js, Vite, Django, FastAPI…) ve ne kadar süredir açık olduğu. Karta tıklayınca tarayıcıda açılır.
+- **Son kapatılanlar:** kapanan sunucunun kartı griye döner ve sayfasının son görüntüsüyle kalır. Tıklayınca yeniden başlar; port dinlenmeye başlayınca tarayıcıda açılır.
+- **Sayan menü çubuğu simgesi:** küçük bir pencere, içinde çalışan sunucu sayısı. Sayı değişince yuvarlanır, üstüne gelince sayar, sunucu açılırken yükleme çizgisi akar.
+- **Liquid Glass panel** (macOS 26 ve sonrası).
 - **Son kapatılanı aç:** başlıktaki ↩ düğmesi ya da her yerden ⌃⌥⌘T (isteğe bağlı kısayol).
 - **Geçmiş:** gün gruplu, proje, port ya da komutla aranabilir. En fazla 200 sunucu tutulur; sabitlenenler hiç silinmez.
 - **Sabitle:** her gün açtığın sunucular hep üstte durur.
@@ -26,7 +28,7 @@
 
 1. [Son sürümden](../../releases/latest) `Portside-x.y.z.dmg` dosyasını indir.
 2. Aç ve **Portside**'ı **Uygulamalar** klasörüne sürükle.
-3. Portside'ı aç. Menü çubuğunda bir yelkenli belirir; panel ilk açılışta bir kez kendiliğinden açılır.
+3. Portside'ı aç. Menü çubuğunda küçük bir pencere simgesi belirir; panel ilk açılışta bir kez kendiliğinden açılır.
 
 Sürümler Developer ID ile imzalı ve Apple tarafından onaylıdır (notarized). macOS 14 Sonoma ve sonrası, Apple Silicon ve Intel.
 
@@ -34,7 +36,7 @@ Sürümler Developer ID ile imzalı ve Apple tarafından onaylıdır (notarized)
 
 ## Gizlilik
 
-Portside **hiçbir ağ isteği yapmaz**, analiz verisi toplamaz. Geçmiş `~/Library/Application Support/Portside/history.json` dosyasında yalnız senin okuyabileceğin şekilde durur. Adında `SECRET`, `TOKEN`, `PASSWORD`, `API_KEY` gibi ifadeler geçen ortam değişkenleri **hiç kaydedilmez**. Ayrıntı: [PRIVACY.md](PRIVACY.md).
+Portside analiz verisi toplamaz, kendine ait hiçbir sunucuya bağlanmaz. **Site önizlemeleri** için her sunucunun yerel sayfasını gizli bir web görünümünde kısa süre açar; sayfa internetten yazı tipi ya da betik yüklüyorsa o an onları da yükler. Ayarlardan kapatılabilir. Geçmiş `~/Library/Application Support/Portside/history.json` dosyasında yalnız senin okuyabileceğin şekilde durur. Adında `SECRET`, `TOKEN`, `PASSWORD`, `API_KEY` gibi ifadeler geçen ortam değişkenleri **hiç kaydedilmez**. Ayrıntı: [PRIVACY.md](PRIVACY.md).
 
 ## Kaynaktan derleme
 
