@@ -108,21 +108,33 @@ private final class WebSnapshotter: NSObject, WKNavigationDelegate {
         configuration.websiteDataStore = .nonPersistent()
         configuration.mediaTypesRequiringUserActionForPlayback = .all
         webView = WKWebView(frame: NSRect(origin: .zero, size: Self.pageSize), configuration: configuration)
-        // WebKit only paints views that live in a window; this one sits far off screen.
+        // WebKit only paints views that live in a window. Parking it off screen is not
+        // enough: macOS pulls such windows back on screen when displays change, where it
+        // showed up as a blank white rectangle. So it is fully transparent, click-through,
+        // and only ordered in while a capture runs. It sits on a real screen and above other
+        // windows because WebKit pauses animation frames for views it can't see.
         window = NSWindow(
-            contentRect: NSRect(origin: NSPoint(x: -30_000, y: -30_000), size: Self.pageSize),
+            contentRect: NSRect(origin: .zero, size: Self.pageSize),
             styleMask: .borderless, backing: .buffered, defer: false
         )
         super.init()
         window.isReleasedWhenClosed = false
         window.ignoresMouseEvents = true
+        window.alphaValue = 0
+        window.hasShadow = false
+        window.level = .floating
+        window.collectionBehavior = [.transient, .ignoresCycle]
         window.contentView = webView
-        window.orderBack(nil)
         webView.navigationDelegate = self
     }
 
     func capture(_ url: URL) async -> NSImage? {
-        defer { webView.loadHTMLString("", baseURL: nil) }
+        window.setFrameOrigin(.zero)
+        window.orderFrontRegardless()
+        defer {
+            webView.loadHTMLString("", baseURL: nil)
+            window.orderOut(nil)
+        }
 
         attempt += 1
         let current = attempt
