@@ -266,3 +266,31 @@ final class PreviewFallbackTests: XCTestCase {
         XCTAssertEqual(state.previewID(for: fresh), "fresh")
     }
 }
+
+final class ShellTests: XCTestCase {
+    func testOutputLargerThanThePipeBufferIsNotLost() async {
+        // 1 MB: far more than a pipe holds, so a reader that waits for the exit first would hang.
+        let output = await Shell.run("/bin/sh", arguments: ["-c", "head -c 1000000 /dev/zero | tr '\\0' 'a'"], timeout: 20)
+        XCTAssertEqual(output?.count, 1_000_000)
+    }
+
+    func testHungChildIsGivenUpOn() async {
+        let started = Date()
+        let output = await Shell.run("/bin/sleep", arguments: ["30"], timeout: 0.5)
+        XCTAssertNil(output)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+    }
+
+    func testMissingProgramIsNil() async {
+        let output = await Shell.run("/nonexistent/program")
+        XCTAssertNil(output)
+    }
+
+    func testErrorsAreOnlyMergedWhenAsked() async {
+        let command = ["-c", "echo out; echo err 1>&2"]
+        let plain = await Shell.run("/bin/sh", arguments: command)
+        let merged = await Shell.run("/bin/sh", arguments: command, mergingErrors: true)
+        XCTAssertEqual(plain, "out\n")
+        XCTAssertEqual(Set((merged ?? "").split(separator: "\n")), ["out", "err"])
+    }
+}
