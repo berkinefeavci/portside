@@ -8,24 +8,31 @@ enum ServerScanner {
         "next-serv", "uvicorn", "gunicorn", "puma", "hugo", "caddy"
     ]
 
-    static func scan() async -> [DevServer] {
-        let ports = await PortScanner.scan()
+    /// A listening process is a dev server if it is a known runtime, or a program that
+    /// `go run` / `cargo run` built (those have arbitrary names; see `BuildOutput`).
+    static func isDevServer(_ port: ListeningPort) -> Bool {
+        let command = port.command.lowercased()
+        if devCommands.contains(command) || command.hasPrefix("python3.") { return true }
+        return ProcessResolver.executablePath(of: port.pid).flatMap(BuildOutput.kind(ofExecutable:)) != nil
+    }
 
-        let devPorts = ports.filter { port in
-            let command = port.command.lowercased()
-            return devCommands.contains(command) || command.hasPrefix("python3.")
-        }
+    /// nil when the ports couldn't be listed: the caller keeps what it had instead of
+    /// concluding that every server has stopped.
+    static func scan() async -> [DevServer]? {
+        guard let ports = await PortScanner.scan() else { return nil }
 
         var seenPorts = Set<Int>()
         var seenPIDs = Set<Int>()
-        let uniquePorts = devPorts.filter { port in
+        let uniquePorts = ports.filter(isDevServer).filter { port in
             seenPorts.insert(port.port).inserted && seenPIDs.insert(port.pid).inserted
         }
+        ResolvedCache.keep(pids: Set(uniquePorts.map(\.pid)))
 
         return await withTaskGroup(of: DevServer?.self) { group in
             for port in uniquePorts {
                 group.addTask {
-                    guard let info = await ProcessResolver.resolve(pid: port.pid) else { return nil }
+                    let startedAt = ProcessResolver.startTime(of: port.pid)
+                    guard let info = await ResolvedCache.info(pid: port.pid, startedAt: startedAt) else { return nil }
                     return DevServer(
                         pid: port.pid,
                         port: port.port,
@@ -33,7 +40,7 @@ enum ServerScanner {
                         framework: ProcessResolver.detectFramework(from: info),
                         projectName: await ProjectNames.name(for: info.workingDirectory),
                         projectPath: info.workingDirectory,
-                        startedAt: ProcessResolver.startTime(of: port.pid)
+                        startedAt: startedAt
                     )
                 }
             }
@@ -47,6 +54,31 @@ enum ServerScanner {
             }
             return results.sorted { $0.port < $1.port }
         }
+    }
+}
+
+/// `ps` and the working directory of a server are looked up once per process, not on every scan.
+/// Keyed by start time as well, so a recycled PID is looked up again.
+private enum ResolvedCache {
+    private struct Key: Hashable {
+        let pid: Int
+        let startedAt: Int
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var entries: [Key: ResolvedProcess] = [:]
+
+    static func info(pid: Int, startedAt: Date?) async -> ResolvedProcess? {
+        let key = Key(pid: pid, startedAt: Int(startedAt?.timeIntervalSince1970 ?? 0))
+        if let cached = lock.withLock({ entries[key] }) { return cached }
+        guard let info = await ProcessResolver.resolve(pid: pid) else { return nil }
+        // Without a start time the process can't be told apart from a later one with the same PID.
+        if startedAt != nil { lock.withLock { entries[key] = info } }
+        return info
+    }
+
+    static func keep(pids: Set<Int>) {
+        lock.withLock { entries = entries.filter { pids.contains($0.key.pid) } }
     }
 }
 

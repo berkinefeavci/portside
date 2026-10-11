@@ -125,21 +125,26 @@ final class AppState {
         async let scannedSims = SimulatorMonitor.scan()
         let (newServers, newSims) = await (scannedServers, scannedSims)
 
-        killedPIDs.formIntersection(newServers.map(\.pid))
-        killedSimUDIDs.formIntersection(newSims.map(\.id))
+        // A scan that couldn't finish says nothing about what is running: keep what is shown.
+        if let newServers {
+            killedPIDs.formIntersection(newServers.map(\.pid))
 
-        let visible = newServers.filter { !killedPIDs.contains($0.pid) }
-        await remember(visible)
+            let visible = newServers.filter { !killedPIDs.contains($0.pid) }
+            await remember(visible)
 
-        for server in visible {
-            if case .failed = restartStates[server.port] { restartStates[server.port] = nil }
+            for server in visible {
+                if case .failed = restartStates[server.port] { restartStates[server.port] = nil }
+            }
+
+            let merged = preservingRestartingRows(visible)
+            if servers != merged { servers = merged }
         }
 
-        let merged = preservingRestartingRows(visible)
-        if servers != merged { servers = merged }
-
-        let sims = newSims.filter { !killedSimUDIDs.contains($0.id) }
-        if simulators != sims { simulators = sims }
+        if let newSims {
+            killedSimUDIDs.formIntersection(newSims.map(\.id))
+            let sims = newSims.filter { !killedSimUDIDs.contains($0.id) }
+            if simulators != sims { simulators = sims }
+        }
 
         launched = launched.filter { $0.value.isRunning || runningKeys.contains($0.key) }
         if isInitialLoad { isInitialLoad = false }

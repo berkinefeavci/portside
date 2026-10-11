@@ -13,15 +13,11 @@ enum ProcessResolver {
     // MARK: - Process Details
 
     static func resolve(pid: Int) async -> ResolvedProcess? {
-        async let argsResult = Shell.run("/bin/ps", arguments: ["-p", "\(pid)", "-o", "args="])
-        async let cwdResult = Shell.run("/usr/sbin/lsof", arguments: ["-d", "cwd", "-a", "-p", "\(pid)", "-Fn"])
-
-        guard let args = await argsResult?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard let args = await Shell.run("/bin/ps", arguments: ["-p", "\(pid)", "-o", "args="])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
               !args.isEmpty else { return nil }
 
-        let cwd = await parseCWD(cwdResult ?? "")
-
-        return ResolvedProcess(pid: pid, arguments: args, workingDirectory: cwd)
+        return ResolvedProcess(pid: pid, arguments: args, workingDirectory: await workingDirectory(pid: pid))
     }
 
     // MARK: - Real argv + environment
@@ -90,30 +86,43 @@ enum ProcessResolver {
 
     // Next.js and npm overwrite their own argv with a display title, so the
     // process holding the port often cannot be relaunched — walk up to one that can.
+    // A compiled program from `go run` or `cargo run` is only a build output: start the
+    // command that built it instead (it rebuilds, and Go deletes its binary on exit).
     static func relaunchTarget(pid: Int, projectPath: String) async -> RelaunchTarget? {
         var candidate: Int? = pid
+        var sawBuildOutput = false
+        var cargoBinary: RelaunchTarget?
 
         for _ in 0..<maxAncestorHops {
-            guard let current = candidate else { return nil }
+            guard let current = candidate else { break }
 
             let info = launchInfo(pid: current)
             let directory = await workingDirectory(pid: current)
 
-            guard directory == projectPath else { return nil }
+            guard directory == projectPath else { break }
+
+            let kind = BuildOutput.kind(ofExecutable: info.executablePath)
+            sawBuildOutput = sawBuildOutput || kind != nil
 
             if isRelaunchable(info) {
-                return RelaunchTarget(
+                let target = RelaunchTarget(
                     pid: current,
                     executablePath: info.executablePath,
                     arguments: Array(info.argv.dropFirst()),
-                    environment: keepable(info.environment)
+                    environment: SavedEnvironment.filtered(info.environment)
                 )
+                if kind == .cargo {
+                    cargoBinary = cargoBinary ?? target
+                } else if kind == nil, !sawBuildOutput || BuildOutput.isBuilder(info.executablePath) {
+                    return target
+                }
             }
 
             candidate = parentPID(of: current)
         }
 
-        return nil
+        // Without a `cargo run` above it, the compiled program itself is still a fine thing to start.
+        return cargoBinary
     }
 
     private static func isRelaunchable(_ info: LaunchInfo) -> Bool {
@@ -124,22 +133,6 @@ enum ProcessResolver {
             return false
         }
         return !info.argv.dropFirst().contains(where: \.isEmpty)
-    }
-
-    // Secrets stay out of the history file; session-bound values would be stale anyway.
-    private static let secretPattern = #"(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE|CREDENTIAL|AUTH|COOKIE|SESSION)"#
-    private static let staleKeys: Set<String> = [
-        "_", "PWD", "OLDPWD", "SHLVL", "TERM_SESSION_ID", "ITERM_SESSION_ID",
-        "SECURITYSESSIONID", "SSH_AUTH_SOCK", "LaunchInstanceID", "TMUX", "TMUX_PANE"
-    ]
-
-    static func keepable(_ environment: [String: String]) -> [String: String] {
-        environment.filter { key, _ in
-            !staleKeys.contains(key)
-                && !key.hasPrefix("__CF")
-                && !key.hasPrefix("XPC_")
-                && key.uppercased().range(of: secretPattern, options: .regularExpression) == nil
-        }
     }
 
     static func parentPID(of pid: Int) -> Int? {
@@ -163,7 +156,19 @@ enum ProcessResolver {
         return info
     }
 
+    /// The folder a process runs in, asked of the kernel directly: no `lsof` to spawn.
+    static func currentDirectory(of pid: Int) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        guard proc_pidinfo(Int32(pid), PROC_PIDVNODEPATHINFO, 0, &info, size) == size else { return nil }
+        let path = withUnsafePointer(to: &info.pvi_cdir.vip_path) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
+        }
+        return path.isEmpty ? nil : path
+    }
+
     static func workingDirectory(pid: Int) async -> String {
+        if let directory = currentDirectory(of: pid) { return directory }
         let output = await Shell.run(
             "/usr/sbin/lsof",
             arguments: ["-d", "cwd", "-a", "-p", "\(pid)", "-Fn"]
@@ -171,12 +176,19 @@ enum ProcessResolver {
         return parseCWD(output ?? "")
     }
 
+    /// The program a process is running, without parsing its whole argument block.
+    static func executablePath(of pid: Int) -> String? {
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        guard proc_pidpath(Int32(pid), &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return String(cString: buffer)
+    }
+
     // MARK: - Framework Detection
 
     static func detectFramework(from info: ResolvedProcess) -> Framework {
         let args = info.arguments.lowercased()
 
-        if args.contains("next") { return .nextjs }
+        if mentionsNext(args) { return .nextjs }
         if args.contains("vite") || args.contains("vitest") { return .vite }
         if args.contains("nuxt") { return .nuxt }
         if args.contains("remix") { return .remix }
@@ -186,12 +198,18 @@ enum ProcessResolver {
         if args.contains("flask") { return .flask }
         if args.contains("uvicorn") || args.contains("fastapi") { return .fastapi }
         if args.contains("rails") || args.contains("puma") || args.contains("unicorn") { return .rails }
-        if args.contains("cargo") { return .cargo }
-        if args.contains("go run") || args.contains("go build") { return .go }
+        if args.contains("cargo") || BuildOutput.kind(ofExecutable: args) == .cargo { return .cargo }
+        if args.contains("go run") || args.contains("go build") || BuildOutput.kind(ofExecutable: args) == .goRun { return .go }
         if args.contains("php") || args.contains("artisan") { return .php }
         if args.contains("python") || args.contains("http.server") { return .python }
 
         return .unknown
+    }
+
+    /// "next" as a program or package name (`.bin/next dev`, `node_modules/next/…`, `next-server (v14)`),
+    /// not as part of a path such as `/Users/me/nextcloud/`.
+    private static func mentionsNext(_ args: String) -> Bool {
+        args.range(of: #"(^|[\s/])next(-[a-z]+)*([\s/]|$)"#, options: .regularExpression) != nil
     }
 
     // MARK: - Project Name

@@ -2,12 +2,32 @@
 import Foundation
 
 enum SimulatorMonitor {
-    static func scan() async -> [Simulator] {
+    // `xcrun simctl` wakes CoreSimulatorService every time it runs, so it is only asked while
+    // a simulator can be booted: Simulator.app is open or a simulator's launchd is running.
+    // A full check still happens once a minute, in case that guess is ever wrong.
+    private static let fullCheckInterval: TimeInterval = 60
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var lastFullCheck = Date.distantPast
+    nonisolated(unsafe) private static var appNames: [String: String] = [:]
+
+    static func mayHaveBootedDevices() -> Bool {
+        let seen = ProcessTable.contains { $0 == "Simulator" || $0.hasPrefix("launchd_sim") }
+        if seen != false { return true }
+        return lock.withLock {
+            guard Date().timeIntervalSince(lastFullCheck) > fullCheckInterval else { return false }
+            lastFullCheck = Date()
+            return true
+        }
+    }
+
+    /// nil when `simctl` couldn't run or didn't finish; the caller then keeps what it had.
+    static func scan() async -> [Simulator]? {
+        guard mayHaveBootedDevices() else { return [] }
         guard let output = await Shell.run(
             "/usr/bin/xcrun",
             arguments: ["simctl", "list", "devices", "booted", "--json"]
         ) else {
-            return []
+            return nil
         }
 
         let devices = parse(output)
@@ -33,13 +53,15 @@ enum SimulatorMonitor {
     static func relaunchApp(udid: String, bundleID: String) async -> String? {
         _ = await Shell.run(
             "/usr/bin/xcrun",
-            arguments: ["simctl", "terminate", udid, bundleID]
+            arguments: ["simctl", "terminate", udid, bundleID],
+            timeout: 30
         )
 
         let output = await Shell.run(
             "/usr/bin/xcrun",
             arguments: ["simctl", "launch", udid, bundleID],
-            mergingErrors: true
+            mergingErrors: true,
+            timeout: 30
         )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         if output.contains(bundleID), output.contains(":"),
@@ -51,11 +73,7 @@ enum SimulatorMonitor {
     }
 
     static func shutdown(udid: String) async {
-        _ = await Shell.run("/usr/bin/xcrun", arguments: ["simctl", "shutdown", udid])
-    }
-
-    static func shutdownAll() async {
-        _ = await Shell.run("/usr/bin/xcrun", arguments: ["simctl", "shutdown", "all"])
+        _ = await Shell.run("/usr/bin/xcrun", arguments: ["simctl", "shutdown", udid], timeout: 60)
     }
 }
 
@@ -132,6 +150,14 @@ private extension SimulatorMonitor {
     }
 
     static func resolveAppName(udid: String, bundleID: String) async -> String? {
+        let cacheKey = "\(udid)/\(bundleID)"
+        if let cached = lock.withLock({ appNames[cacheKey] }) { return cached }
+        let name = await readAppName(udid: udid, bundleID: bundleID)
+        if let name { lock.withLock { appNames[cacheKey] = name } }
+        return name
+    }
+
+    private static func readAppName(udid: String, bundleID: String) async -> String? {
         guard let containerPath = await Shell.run(
             "/usr/bin/xcrun",
             arguments: ["simctl", "get_app_container", udid, bundleID, "app"]

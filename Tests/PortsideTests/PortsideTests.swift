@@ -93,21 +93,6 @@ final class HistoryStoreTests: XCTestCase {
 }
 
 final class ProcessResolverTests: XCTestCase {
-    func testSecretsAndSessionValuesAreNotKept() {
-        let kept = ProcessResolver.keepable([
-            "PATH": "/opt/homebrew/bin:/usr/bin",
-            "NODE_ENV": "development",
-            "OPENAI_API_KEY": "sk-123",
-            "GITHUB_TOKEN": "ghp",
-            "DB_PASSWORD": "x",
-            "AWS_SECRET_ACCESS_KEY": "y",
-            "TERM_SESSION_ID": "abc",
-            "PWD": "/somewhere",
-            "__CF_USER_TEXT_ENCODING": "0x1F5",
-        ])
-        XCTAssertEqual(Set(kept.keys), ["PATH", "NODE_ENV"])
-    }
-
     func testWorkingDirectoryParsing() {
         XCTAssertEqual(ProcessResolver.parseCWD("p123\nfcwd\nn/Users/me/site\n"), "/Users/me/site")
         XCTAssertEqual(ProcessResolver.parseCWD(""), "")
@@ -123,6 +108,11 @@ final class ProcessResolverTests: XCTestCase {
         XCTAssertEqual(detect("python -m uvicorn main:app"), .fastapi)
         XCTAssertEqual(detect("python3 -m http.server 8000"), .python)
         XCTAssertEqual(detect("node server.js"), .unknown)
+        XCTAssertEqual(detect("next-server (v14.2.3)"), .nextjs)
+        XCTAssertEqual(detect("node /app/node_modules/next/dist/server/lib/start-server.js"), .nextjs)
+        XCTAssertEqual(detect("node /Users/me/nextcloud-tools/server.js"), .unknown, "a path that merely contains 'next'")
+        XCTAssertEqual(detect("/private/var/folders/zz/T/go-build123/b001/exe/api"), .go)
+        XCTAssertEqual(detect("/Users/me/api/target/debug/api --port 8080"), .cargo)
     }
 
     func testFolderNameIsTitleCased() {
@@ -135,6 +125,72 @@ final class ProcessResolverTests: XCTestCase {
         XCTAssertFalse(info.executablePath.isEmpty)
         XCTAssertFalse(info.argv.isEmpty)
         XCTAssertEqual(info.environment["HOME"], ProcessInfo.processInfo.environment["HOME"])
+    }
+}
+
+final class SavedEnvironmentTests: XCTestCase {
+    func testSecretsAndSessionValuesAreNotKept() {
+        let kept = SavedEnvironment.filtered([
+            "PATH": "/opt/homebrew/bin:/usr/bin",
+            "NODE_ENV": "development",
+            "PORT": "3000",
+            "NEXT_PUBLIC_API_URL": "http://localhost:4000",
+            "OPENAI_API_KEY": "sk-123",
+            "GITHUB_TOKEN": "ghp",
+            "DB_PASSWORD": "x",
+            "AWS_SECRET_ACCESS_KEY": "y",
+            "AWS_ACCESS_KEY_ID": "z",
+            "STRIPE_KEY": "k",
+            "dbPass": "p",
+            "SESSION_COOKIE": "c",
+            "SENTRY_DSN": "https://abc@sentry.io/1",
+            "DATABASE_URL": "postgres://localhost/app",
+            "TERM_SESSION_ID": "abc",
+            "PWD": "/somewhere",
+            "__CF_USER_TEXT_ENCODING": "0x1F5",
+        ])
+        XCTAssertEqual(Set(kept.keys), ["PATH", "NODE_ENV", "PORT", "NEXT_PUBLIC_API_URL"])
+    }
+
+    func testValuesThatLookLikeSecretsAreNotKeptWhateverTheNameSays() {
+        let kept = SavedEnvironment.filtered([
+            "UPSTREAM": "postgres://app:hunter2@db.internal/app",
+            "REDIS": "redis://:hunter2@cache:6379",
+            "CLIENT": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVP",
+            "PEM": "-----BEGIN RSA PRIVATE KEY-----\nabc",
+            "GH": "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
+            "LOCAL": "postgres://localhost:5432/app",
+            "MONKEY": "banana",
+            "KEYBOARD": "us",
+        ])
+        XCTAssertEqual(Set(kept.keys), ["LOCAL", "MONKEY", "KEYBOARD"])
+    }
+
+    func testMalformedNamesAndValuesAreDropped() {
+        XCTAssertTrue(SavedEnvironment.filtered(["": "x", "A=B": "x", "OK": "a\0b", "FINE": "yes"]).keys.contains("FINE"))
+        XCTAssertEqual(SavedEnvironment.filtered(["": "x", "A=B": "x", "OK": "a\0b"]).count, 0)
+    }
+}
+
+final class BuildOutputTests: XCTestCase {
+    func testGoRunAndCargoBinariesAreRecognisedByPath() {
+        XCTAssertEqual(BuildOutput.kind(ofExecutable: "/private/var/folders/zz/abc/T/go-build2412837/b001/exe/api"), .goRun)
+        XCTAssertEqual(BuildOutput.kind(ofExecutable: "/Users/me/api/target/debug/api"), .cargo)
+        XCTAssertEqual(BuildOutput.kind(ofExecutable: "/Users/me/api/target/release/api --port 8080"), .cargo)
+        XCTAssertEqual(BuildOutput.kind(ofExecutable: "/Users/me/api/target/aarch64-apple-darwin/release/api"), .cargo)
+    }
+
+    func testOrdinaryProgramsAreNotBuildOutputs() {
+        XCTAssertNil(BuildOutput.kind(ofExecutable: "/opt/homebrew/bin/node"))
+        XCTAssertNil(BuildOutput.kind(ofExecutable: "/Applications/Spotify.app/Contents/MacOS/Spotify"))
+        XCTAssertNil(BuildOutput.kind(ofExecutable: "/Users/me/target/debug-tools/foo"))
+        XCTAssertNil(BuildOutput.kind(ofExecutable: "/usr/local/go/bin/go"))
+    }
+
+    func testBuilders() {
+        XCTAssertTrue(BuildOutput.isBuilder("/opt/homebrew/bin/go"))
+        XCTAssertTrue(BuildOutput.isBuilder("/Users/me/.cargo/bin/cargo"))
+        XCTAssertFalse(BuildOutput.isBuilder("/bin/zsh"))
     }
 }
 

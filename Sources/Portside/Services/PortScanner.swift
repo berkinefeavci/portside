@@ -8,12 +8,13 @@ struct ListeningPort {
 }
 
 enum PortScanner {
-    static func scan() async -> [ListeningPort] {
+    /// nil when `lsof` couldn't run or didn't finish, as opposed to "nothing is listening".
+    static func scan() async -> [ListeningPort]? {
         guard let output = await Shell.run(
             "/usr/sbin/lsof",
             arguments: ["-iTCP", "-sTCP:LISTEN", "-n", "-P", "-F", "pcn"]
         ) else {
-            return []
+            return nil
         }
         return parse(output)
     }
