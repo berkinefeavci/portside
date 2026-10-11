@@ -97,7 +97,13 @@ final class AppState {
 
     var visibleServers: [DevServer] { servers.filter { !ignoredPaths.contains($0.projectPath) } }
 
-    var isActive: Bool { !visibleServers.isEmpty || !simulators.isEmpty }
+    /// Servers that are running. A row kept on screen by a failed restart is not one, unless its process survived.
+    var runningCount: Int {
+        visibleServers.filter { server in
+            if case .failed = restartStates[server.port] { return Self.isStillRunning(server) }
+            return true
+        }.count
+    }
 
     func entry(for server: DevServer) -> HistoryEntry? {
         pidKeys[server.pid].flatMap { history[$0] }

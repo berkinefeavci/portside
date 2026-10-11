@@ -612,6 +612,20 @@ final class ScanStateTests: XCTestCase {
     }
 
     @MainActor
+    func testAFailedRowIsOnlyCountedAsRunningWhileItsProcessLives() async {
+        let state = AppState(polling: false)
+        // startedAt nil: whatever has this PID is taken to be the process; the xctest process is alive.
+        let alive = DevServer(pid: Int(getpid()), port: 5301, command: "node", framework: .vite, projectName: "A",
+                              projectPath: "/tmp/a", startedAt: nil)
+        let gone = server(port: 5302, pid: 4_000_001)
+        state.servers = [alive, gone]
+        XCTAssertEqual(state.runningCount, 2)
+
+        state.restartStates = [5301: .failed("x"), 5302: .failed("y")]
+        XCTAssertEqual(state.runningCount, 1, "the row of the dead process is not running")
+    }
+
+    @MainActor
     func testAnotherProcessOnThePortClearsTheFailure() async {
         let state = AppState(polling: false)
         let site = server()

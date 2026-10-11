@@ -92,8 +92,8 @@ private extension PanelView {
             Text(verbatim: "Portside")
                 .font(.system(size: 14, weight: .semibold))
 
-            if !appState.visibleServers.isEmpty {
-                Text("\(appState.visibleServers.count) running")
+            if appState.runningCount > 0 {
+                Text("\(appState.runningCount) running")
                     .font(.system(size: 10.5, weight: .semibold))
                     .foregroundStyle(Color.running)
                     .lineLimit(1)

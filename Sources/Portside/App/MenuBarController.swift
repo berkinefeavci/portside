@@ -86,7 +86,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     private func updateIcon() {
         guard let appState else { return }
         withObservationTracking {
-            icon.update(count: appState.visibleServers.count, busy: appState.hasWorkInFlight)
+            icon.update(count: appState.runningCount, busy: appState.hasWorkInFlight)
         } onChange: { [weak self] in
             Task { @MainActor in self?.updateIcon() }
         }
