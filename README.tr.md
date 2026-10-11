@@ -36,7 +36,9 @@ Sürümler Developer ID ile imzalı ve Apple tarafından onaylıdır (notarized)
 
 ## Gizlilik
 
-Portside analiz verisi toplamaz, kendine ait hiçbir sunucuya bağlanmaz. **Site önizlemeleri** için her sunucunun yerel sayfasını gizli bir web görünümünde kısa süre açar; sayfa internetten yazı tipi ya da betik yüklüyorsa o an onları da yükler. Ayarlardan kapatılabilir. Geçmiş `~/Library/Application Support/Portside/history.json` dosyasında yalnız senin okuyabileceğin şekilde durur. Adında `SECRET`, `TOKEN`, `PASSWORD`, `API_KEY` gibi ifadeler geçen ortam değişkenleri **hiç kaydedilmez**. Ayrıntı: [PRIVACY.md](PRIVACY.md).
+Portside analiz verisi toplamaz, kendine ait hiçbir sunucuya bağlanmaz. **Site önizlemeleri** için her sunucunun yerel sayfasını gizli bir web görünümünde kısa süre açar; sayfa internetten yazı tipi ya da betik yüklüyorsa o an onları da yükler. Ayarlardan kapatılabilir. Geçmiş `~/Library/Application Support/Portside/history.json` dosyasında yalnız senin okuyabileceğin şekilde durur. Adında `SECRET`, `TOKEN`, `PASSWORD`, `PASS`, `KEY` (ayrı bir sözcük olarak), `AUTH`, `DATABASE_URL` gibi ifadeler geçen ortam değişkenleri ve değeri parola içeren bir adres, özel anahtar, JWT ya da bilinen bir erişim anahtarı biçiminde olanlar adı ne olursa olsun **hiç kaydedilmez**; eski sürümlerin kaydettikleri de dosya ilk okunduğunda temizlenir. Komut satırı argümanları yazdığın gibi saklanır, gizli bilgileri oraya yazma. Çıktı kayıtları (`~/Library/Logs/Portside/`) ve önizlemeler yalnız senin okuyabileceğin şekilde durur ve geçmiş kaydıyla birlikte silinir. Ayrıntı: [PRIVACY.md](PRIVACY.md).
+
+**İzinler:** klasör erişimi (Masaüstü, Belgeler, İndirilenler) macOS tarafından ilk kullanımda sorulur. *Erişilebilirlik* isteğe bağlıdır; yalnız bir simülatöre tıklayınca doğru Simulator penceresini öne getirmek için kullanılır (Ayarlar → Simülatöre odaklanma). *Mac açılınca başlat* için macOS onay isterse Ayarlar, Oturum Açma Öğeleri ayarlarını açma satırını gösterir.
 
 ## Kaynaktan derleme
 

@@ -54,9 +54,9 @@ Releases are signed with a Developer ID and notarized by Apple. Portside runs on
 
 ## How it works
 
-Portside checks every 3 seconds with standard macOS tools and APIs:
+Portside checks every 3 seconds while its panel is open (every 10 seconds otherwise, since the menu bar count only has to be roughly right) with standard macOS tools and APIs:
 
-- **Listening ports:** `lsof -iTCP -sTCP:LISTEN`, filtered to dev runtimes (node, bun, deno, python, ruby, go, cargo, php, java, uvicorn, gunicorn, puma…). Databases and system services aren't listed.
+- **Listening ports:** `lsof -iTCP -sTCP:LISTEN`, filtered to dev runtimes (node, bun, deno, python, ruby, php, java, uvicorn, gunicorn, puma…). Programs built by `go run` or `cargo run` have arbitrary names, so they are recognised by where the binary lives (`go-build…/exe/`, `target/debug|release/`) and started again with `go run` / `cargo run`. Databases and system services aren't listed.
 - **The real command:** Next.js and npm overwrite their own process title, so the process holding a port often can't be started again from what `ps` shows. Portside reads the real arguments and binary from the kernel (`KERN_PROCARGS2`) and walks up the parent processes to the first one that can be launched again, without leaving the project folder. This part comes from Blink.
 - **Environment:** the same kernel call gives the server's environment, so `PATH` and settings like `NODE_ENV` are restored when it starts again, even from a menu bar app with no shell.
 - **Identity:** a server is identified by its folder and command, not its port. A Vite server that moved from 5173 to 5174 is still the same server.
@@ -68,18 +68,25 @@ Portside has no analytics and talks to no server of its own. Everything stays on
 | What | Where |
 |---|---|
 | History (folder, command, environment, port, timestamps) | `~/Library/Application Support/Portside/history.json` (readable only by you, `0600`) |
-| Output of servers Portside started | `~/Library/Logs/Portside/` |
-| Page previews (small JPEGs) | `~/Library/Application Support/Portside/Previews/` |
+| Output of servers Portside started | `~/Library/Logs/Portside/` (`0600`; the latest run of each server, cut back past 8 MB; deleted with its history entry) |
+| Page previews (small JPEGs) | `~/Library/Application Support/Portside/Previews/` (`0600`; deleted with the history entry) |
 | Settings, hidden projects | `UserDefaults` (`io.github.berkinefeavci.portside`) |
 
 **Site previews** open each running server's page (`http://localhost:<port>`) in a hidden web view for a moment, the way a browser tab would. Pages that load fonts, scripts or analytics from the internet will do so then too. Turn previews off in Settings to stop this and delete the saved pictures.
 
-Environment variables whose names look secret (containing `SECRET`, `TOKEN`, `PASSWORD`, `API_KEY`, `PRIVATE`, `CREDENTIAL`, `AUTH`, `COOKIE`, `SESSION`) are **never written** to the history file. A server that needs such a value from your shell (not from a `.env` file) may fail to reopen. Use **Edit Command…** to run it through your login shell, which loads your usual environment. See [PRIVACY.md](PRIVACY.md).
+Environment variables whose names look secret (containing `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `PASS`, `PWD`, `KEY` as a word, `AUTH`, `CREDENTIAL`, `PRIVATE`, `SESSION`, `COOKIE`, `DSN`, `DATABASE_URL`…) and variables whose *value* looks like one (a URL with a password, a private key, a JWT, a well-known token format) are **never written** to the history file, and older history files are cleaned the first time they are read. A server that needs such a value from your shell (not from a `.env` file) may fail to reopen. Use **Edit Command…** to run it through your login shell, which loads your usual environment. Command-line arguments are stored as you typed them, so keep secrets out of them. See [PRIVACY.md](PRIVACY.md).
+
+### Permissions
+
+- **Folder access** (Desktop, Documents, Downloads): asked by macOS the first time Portside reads or starts something there.
+- **Accessibility** (optional): only to bring the right Simulator window to the front when you click a simulator. Portside reads the window titles of Simulator.app for that and nothing else. Without it, clicking a simulator brings Simulator forward and the row tells you to allow Portside in System Settings → Privacy & Security → Accessibility (Settings → Simulator focus opens it).
+- **Login Items** (optional): *Open at login*. If macOS asks for approval, Settings shows *Open Login Items Settings*.
 
 ## Limitations
 
 - Portside starts servers it has **seen running**. It doesn't scan your disk for projects.
 - A server whose command couldn't be read shows "no command". Use **Edit Command…** to give it one.
+- A history file that can't be read is moved aside as `history.corrupt-<date>.json` and history starts empty (or keeps the entries that were fine); Settings says so.
 - If a runtime is updated in place (for example a Homebrew Python upgrade that changes the versioned path), the saved binary may be gone. Portside says so, and **Edit Command…** fixes it.
 - Docker containers, databases and other non-dev listeners are intentionally ignored.
 
