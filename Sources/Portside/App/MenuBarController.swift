@@ -112,6 +112,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
             panel.animator().alphaValue = 1
         }
         growFromMenuBar()
+        appState.isPanelOpen = true
         Task {
             await appState.refresh()
             appState.refreshPreviews(maxAge: 60)
@@ -152,6 +153,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     private func closePanel() {
         guard panel.isVisible else { return }
         removeMonitors()
+        appState.isPanelOpen = false
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.12
             panel.animator().alphaValue = 0

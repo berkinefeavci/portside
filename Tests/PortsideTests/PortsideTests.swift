@@ -491,3 +491,121 @@ final class PreviewStoreTests: XCTestCase {
         XCTAssertEqual(PreviewTarget.url(port: 3000)?.absoluteString, "http://localhost:3000/")
     }
 }
+
+final class ScanStateTests: XCTestCase {
+    private var original: URL!
+    private var temp: URL!
+
+    override func setUp() {
+        original = HistoryStore.directory
+        temp = FileManager.default.temporaryDirectory.appendingPathComponent("PortsideTests-\(UUID().uuidString)")
+        HistoryStore.directory = temp
+    }
+
+    override func tearDown() {
+        HistoryStore.directory = original
+        try? FileManager.default.removeItem(at: temp)
+    }
+
+    private func server(port: Int = 5199, pid: Int = Int(getpid())) -> DevServer {
+        DevServer(pid: pid, port: port, command: "node", framework: .vite, projectName: "Site",
+                  projectPath: "/tmp/site", startedAt: Date(timeIntervalSince1970: 1_000))
+    }
+
+    @MainActor
+    func testAScanThatChangesNothingDoesNotNotifyViews() async {
+        let state = AppState(polling: false)
+        await state.apply(servers: [server()], simulators: [])
+        XCTAssertEqual(state.servers, [server()])
+
+        let fired = expectation(description: "a view was told something changed")
+        fired.isInverted = true
+        watch(state, server()) { fired.fulfill() }
+
+        await state.apply(servers: [server()], simulators: [])
+        await fulfillment(of: [fired], timeout: 0.3)
+    }
+
+    @MainActor
+    func testAScanThatChangesSomethingDoesNotifyViews() async {
+        let state = AppState(polling: false)
+        await state.apply(servers: [server()], simulators: [])
+
+        let fired = expectation(description: "a view was told something changed")
+        watch(state, server()) { fired.fulfill() }
+
+        await state.apply(servers: [server(), server(port: 5200, pid: 1)], simulators: [])
+        await fulfillment(of: [fired], timeout: 2)
+    }
+
+    @MainActor
+    private func watch(_ state: AppState, _ server: DevServer, onChange: @escaping @Sendable () -> Void) {
+        withObservationTracking {
+            _ = state.entry(for: server)
+            _ = state.servers
+            _ = state.simulators
+            _ = state.history
+            _ = state.restartStates
+            _ = state.hasWorkInFlight
+            _ = state.closedCards(limit: 4)
+        } onChange: {
+            onChange()
+        }
+    }
+
+    // MARK: - A failed restart stays visible
+
+    @MainActor
+    func testRowsMidRestartOrFailedAreKeptWhileTheirProcessIsGone() {
+        let gone = server(port: 3000, pid: 10)
+        let other = server(port: 4000, pid: 20)
+        let kept = AppState.preservingRestartingRows(
+            scanned: [other], previous: [gone, other], restartStates: [3000: .failed("EADDRINUSE")]
+        )
+        XCTAssertEqual(kept.map(\.port), [3000, 4000], "the failed row stays so its reason can be read")
+
+        let working = AppState.preservingRestartingRows(scanned: [], previous: [gone], restartStates: [3000: .working])
+        XCTAssertEqual(working.map(\.port), [3000])
+
+        let dismissed = AppState.preservingRestartingRows(scanned: [], previous: [gone], restartStates: [:])
+        XCTAssertTrue(dismissed.isEmpty, "nothing keeps a row once the failure is dismissed")
+
+        let back = AppState.preservingRestartingRows(
+            scanned: [server(port: 3000, pid: 99)], previous: [gone], restartStates: [3000: .failed("x")]
+        )
+        XCTAssertEqual(back.map(\.pid), [99], "a server that is back replaces the old row")
+    }
+
+    @MainActor
+    func testFailedRestartSurvivesScansUntilDismissed() async {
+        let state = AppState(polling: false)
+        let site = server()
+        await state.apply(servers: [site], simulators: [])
+
+        // This entry has no command to start again, so the restart fails at once.
+        state.restart(site)
+        guard case .failed = state.restartStates[site.port] else { return XCTFail("expected a failure") }
+
+        await state.apply(servers: [site], simulators: [])
+        guard case .failed = state.restartStates[site.port] else { return XCTFail("the next scan wiped the failure") }
+
+        await state.apply(servers: [], simulators: [])
+        XCTAssertEqual(state.servers, [site], "the card stays, with its failure, although the process is gone")
+        guard case .failed = state.restartStates[site.port] else { return XCTFail("the failure disappeared with the process") }
+
+        state.dismissFailed(site)
+        XCTAssertTrue(state.servers.isEmpty)
+        XCTAssertNil(state.restartStates[site.port])
+    }
+
+    @MainActor
+    func testAnotherProcessOnThePortClearsTheFailure() async {
+        let state = AppState(polling: false)
+        let site = server()
+        await state.apply(servers: [site], simulators: [])
+        state.restart(site)
+
+        await state.apply(servers: [server(pid: 4_000_000)], simulators: [])
+        XCTAssertNil(state.restartStates[site.port])
+    }
+}

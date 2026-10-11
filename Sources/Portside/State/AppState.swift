@@ -33,23 +33,36 @@ final class AppState {
         case failed(String)
     }
 
-    private static let pollingInterval: TimeInterval = 3
+    /// Scanning spawns `lsof` and friends, so it is as rare as the screen allows: often while the
+    /// panel is open or something is starting, slowly otherwise (the menu bar count only has to be roughly right).
+    private static let openPollingInterval: TimeInterval = 3
+    private static let idlePollingInterval: TimeInterval = 10
     private static let recentLimit = 5
 
-    private var timer: Timer?
-    private var isScanning = false
+    /// Set by the menu bar controller while the panel is on screen.
+    @ObservationIgnored var isPanelOpen = false {
+        didSet { if oldValue != isPanelOpen { restartPolling() } }
+    }
+
+    @ObservationIgnored private var pollTask: Task<Void, Never>?
+    @ObservationIgnored private var isScanning = false
 
     // Running PID → history entry, and → the process that can be launched again.
     private var pidKeys: [Int: String] = [:]
     private var rootPIDs: [Int: Int] = [:]
     private var runningKeys: Set<String> = []
 
-    private var killedPIDs: Set<Int> = []
-    private var killedSimUDIDs: Set<String> = []
-    private var launched: [String: LaunchedServer] = [:]
+    @ObservationIgnored private var killedPIDs: Set<Int> = []
+    @ObservationIgnored private var killedSimUDIDs: Set<String> = []
+    @ObservationIgnored private var launched: [String: LaunchedServer] = [:]
+
+    // Restarts: which history entry a port's row belongs to and which process it showed, kept
+    // for as long as the row is on screen (a failed restart leaves no running process to ask).
+    @ObservationIgnored private var restartEntryIDs: [Int: String] = [:]
+    @ObservationIgnored private var restartedPIDs: [Int: Int] = [:]
 
     init(polling: Bool = true) {
-        if polling { startPolling() }
+        if polling { restartPolling(refreshingFirst: true) }
     }
 
     // MARK: - Derived
@@ -109,10 +122,20 @@ final class AppState {
 
     // MARK: - Polling
 
-    private func startPolling() {
-        Task { await refresh() }
-        timer = Timer.scheduledTimer(withTimeInterval: Self.pollingInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.refresh() }
+    private var pollingInterval: TimeInterval {
+        isPanelOpen || hasWorkInFlight ? Self.openPollingInterval : Self.idlePollingInterval
+    }
+
+    private func restartPolling(refreshingFirst: Bool = false) {
+        pollTask?.cancel()
+        pollTask = Task { [weak self] in
+            if refreshingFirst { await self?.refresh() }
+            while !Task.isCancelled {
+                guard let interval = self?.pollingInterval else { return }
+                try? await Task.sleep(for: .seconds(interval))
+                if Task.isCancelled { return }
+                await self?.refresh()
+            }
         }
     }
 
@@ -124,7 +147,12 @@ final class AppState {
         async let scannedServers = ServerScanner.scan()
         async let scannedSims = SimulatorMonitor.scan()
         let (newServers, newSims) = await (scannedServers, scannedSims)
+        await apply(servers: newServers, simulators: newSims)
+    }
 
+    /// Takes the result of a scan into the state. Anything the scan didn't change is left
+    /// alone, so views that watch it aren't redrawn every few seconds for nothing.
+    func apply(servers newServers: [DevServer]?, simulators newSims: [Simulator]?) async {
         // A scan that couldn't finish says nothing about what is running: keep what is shown.
         if let newServers {
             killedPIDs.formIntersection(newServers.map(\.pid))
@@ -132,11 +160,14 @@ final class AppState {
             let visible = newServers.filter { !killedPIDs.contains($0.pid) }
             await remember(visible)
 
+            // A failed restart stays on screen until dismissed, or until something else serves that port.
             for server in visible {
-                if case .failed = restartStates[server.port] { restartStates[server.port] = nil }
+                if case .failed = restartStates[server.port], restartedPIDs[server.port] != server.pid {
+                    clearRestart(port: server.port)
+                }
             }
 
-            let merged = preservingRestartingRows(visible)
+            let merged = Self.preservingRestartingRows(scanned: visible, previous: servers, restartStates: restartStates)
             if servers != merged { servers = merged }
         }
 
@@ -167,10 +198,14 @@ final class AppState {
         }
     }
 
-    private func preservingRestartingRows(_ scanned: [DevServer]) -> [DevServer] {
+    /// A row whose restart is under way, or failed, stays in the list although its process is gone:
+    /// it is where the progress, and the reason for a failure, are shown.
+    static func preservingRestartingRows(
+        scanned: [DevServer], previous: [DevServer], restartStates: [Int: ActionState]
+    ) -> [DevServer] {
         var merged = scanned
-        for (port, state) in restartStates where state == .working && !merged.contains(where: { $0.port == port }) {
-            if let previous = servers.first(where: { $0.port == port }) { merged.append(previous) }
+        for port in restartStates.keys where !merged.contains(where: { $0.port == port }) {
+            if let row = previous.first(where: { $0.port == port }) { merged.append(row) }
         }
         return merged.sorted { $0.port < $1.port }
     }
@@ -433,13 +468,22 @@ final class AppState {
     // MARK: - Running servers
 
     func stop(_ server: DevServer) {
-        restartStates[server.port] = nil
-        killedPIDs.insert(server.pid)
-        if let id = pidKeys[server.pid] { history[id]?.lastStopped = Date() }
+        clearRestart(port: server.port)
         withAnimation(.easeOut(duration: 0.3)) {
             servers.removeAll { $0.port == server.port }
         }
+        // A row left behind by a failed restart has no process any more; its PID may belong to another one.
+        guard Self.isStillRunning(server) else { return }
+        killedPIDs.insert(server.pid)
+        if let id = pidKeys[server.pid] { history[id]?.lastStopped = Date() }
         ProcessTree.kill(rootPIDs[server.pid] ?? server.pid)
+    }
+
+    /// Whether `server` is still the process it was when scanned (a PID can be handed to a new process).
+    static func isStillRunning(_ server: DevServer) -> Bool {
+        guard let started = ProcessResolver.startTime(of: server.pid) else { return false }
+        guard let known = server.startedAt else { return true }
+        return abs(started.timeIntervalSince(known)) < 2
     }
 
     func stopAllServers() {
@@ -448,28 +492,43 @@ final class AppState {
 
     func dismissFailed(_ server: DevServer) {
         withAnimation(.easeOut(duration: 0.3)) {
-            restartStates[server.port] = nil
+            clearRestart(port: server.port)
             servers.removeAll { $0.port == server.port }
         }
     }
 
+    private func clearRestart(port: Int) {
+        restartStates[port] = nil
+        restartEntryIDs[port] = nil
+        restartedPIDs[port] = nil
+    }
+
+    /// The history entry a running row (or one whose restart failed) belongs to.
+    private func entryID(forRowOf server: DevServer) -> String? {
+        pidKeys[server.pid] ?? restartEntryIDs[server.port]
+    }
+
     func restart(_ server: DevServer) {
         guard restartStates[server.port] != .working else { return }
-        guard let id = pidKeys[server.pid], let entry = history[id], let command = entry.launchCommand else {
+        restartedPIDs[server.port] = server.pid
+        guard let id = entryID(forRowOf: server), let entry = history[id], let command = entry.launchCommand else {
             withAnimation { restartStates[server.port] = .failed(String(localized: "Couldn't read the original command.")) }
             return
         }
+        restartEntryIDs[server.port] = id
 
         withAnimation(.easeOut(duration: 0.2)) { restartStates[server.port] = .working }
 
         Task {
-            let root = rootPIDs[server.pid] ?? server.pid
-            killedPIDs.insert(server.pid)
-            ProcessTree.kill(root)
+            // Starting again after a failure: the old process is long gone, and its PID may be someone else's.
+            if Self.isStillRunning(server) {
+                killedPIDs.insert(server.pid)
+                ProcessTree.kill(rootPIDs[server.pid] ?? server.pid)
 
-            guard await waitForPortFree(server.port) else {
-                finishRestart(server.port, failure: String(localized: "Port \(server.port) never freed up."))
-                return
+                guard await waitForPortFree(server.port) else {
+                    finishRestart(server.port, failure: String(localized: "Port \(server.port) never freed up."))
+                    return
+                }
             }
 
             let failure = await launch(entry, command: command)
@@ -479,8 +538,17 @@ final class AppState {
 
     private func finishRestart(_ port: Int, failure: String?) {
         withAnimation(.easeOut(duration: 0.25)) {
-            restartStates[port] = failure.map { .failed($0) }
+            if let failure {
+                restartStates[port] = .failed(failure)
+            } else {
+                clearRestart(port: port)
+            }
         }
+    }
+
+    /// The server's output log, for the failure box under its card.
+    func logURL(forRowOf server: DevServer) -> URL? {
+        entryID(forRowOf: server).flatMap { history[$0] }.flatMap(logURL(for:))
     }
 
     private func waitForPortFree(_ port: Int) async -> Bool {
