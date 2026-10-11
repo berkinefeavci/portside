@@ -67,10 +67,6 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
 
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.updateIcon() }
-        }
-
         HotKeys.install([
             .togglePanel: { [weak self] in self?.togglePanel() },
             .reopenLastClosed: { [weak self] in self?.appState.reopenLastClosed() },
@@ -85,9 +81,15 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Follows the running count and the busy state: runs once now, and again each time one of
+    /// them changes (no timer that wakes the app twice a second to find out nothing did).
     private func updateIcon() {
         guard let appState else { return }
-        icon.update(count: appState.visibleServers.count, busy: appState.hasWorkInFlight)
+        withObservationTracking {
+            icon.update(count: appState.visibleServers.count, busy: appState.hasWorkInFlight)
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.updateIcon() }
+        }
     }
 
     @objc private func togglePanel() {
