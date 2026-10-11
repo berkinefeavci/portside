@@ -4,11 +4,22 @@ import Foundation
 /// they ran, pictures of their pages, what their servers printed. Files are readable by the
 /// user only (0600) from the moment they exist, folders likewise (0700).
 enum PrivateFiles {
+    /// Creates the folder (0700) if it isn't there; one that exists is left as it is.
     static func createDirectory(_ url: URL) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    }
+
+    /// Folders and files made by earlier versions are readable by others (0755/0644). Tightens
+    /// Portside's own: only ever called for the default locations, never for a folder the user chose.
+    static func tighten(folders: [URL]) {
         let fileManager = FileManager.default
-        try fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        // A folder made by an earlier version keeps its old mode otherwise.
-        try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        for folder in folders where fileManager.fileExists(atPath: folder.path) {
+            try? fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+            for file in (try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey])) ?? [] {
+                guard (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+                try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+            }
+        }
     }
 
     /// Replaces the file atomically: the data goes to a private temporary file that is renamed over it.

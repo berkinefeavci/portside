@@ -4,8 +4,8 @@ import Foundation
 enum SimulatorMonitor {
     // `xcrun simctl` wakes CoreSimulatorService every time it runs, so it is only asked while
     // a simulator can be booted: Simulator.app is open or a simulator's launchd is running.
-    // A full check still happens once a minute, in case that guess is ever wrong.
-    private static let fullCheckInterval: TimeInterval = 60
+    // A full check still happens every five minutes, in case that guess is ever wrong.
+    private static let fullCheckInterval: TimeInterval = 300
     private static let lock = NSLock()
     nonisolated(unsafe) private static var lastFullCheck = Date.distantPast
     nonisolated(unsafe) private static var appNames: [String: String] = [:]

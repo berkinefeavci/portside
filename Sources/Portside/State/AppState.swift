@@ -74,11 +74,22 @@ final class AppState {
 
         guard polling else { return }
         restartPolling(refreshingFirst: true)
+
+        // Off the main thread: folders in the user's Library can be slow to answer.
+        let tidiesDefaultFolders = ProcessInfo.processInfo.environment["PORTSIDE_DATA_DIR"] == nil
         // Pictures and logs of entries that no longer exist. Never when the history couldn't be read
         // properly: then the files are all that is left of it.
-        if !loaded.entries.isEmpty, loaded.notice == nil {
-            let keys = Set(loaded.entries.keys.map(HistoryEntry.fileKey(for:)))
-            Task.detached(priority: .utility) { LogFiles.removeOrphans(keeping: keys) }
+        let keys: Set<String>? = !loaded.entries.isEmpty && loaded.notice == nil
+            ? Set(loaded.entries.keys.map(HistoryEntry.fileKey(for:))) : nil
+        Task.detached(priority: .utility) {
+            if tidiesDefaultFolders {
+                PrivateFiles.tighten(folders: [
+                    HistoryStore.directory,
+                    HistoryStore.directory.appendingPathComponent("Previews", isDirectory: true),
+                    HistoryStore.logDirectory,
+                ])
+            }
+            if let keys { LogFiles.removeOrphans(keeping: keys) }
         }
     }
 

@@ -5,13 +5,13 @@
 - A failed restart stays on its card, with the reason, until you dismiss it, and can be retried from there.
 - Go and Cargo servers (`go run`, `cargo run`) are found and restarted with `go run` / `cargo run`.
 - Scanning can no longer freeze on a command with a lot of output or one that hangs, and a scan that fails keeps what is shown instead of reporting every server as stopped.
-- Scanning is lighter: ports every 3 s while the panel is open and every 10 s otherwise, no `lsof`/`ps` per server per scan, and `simctl` only while a simulator can be running.
+- Scanning is lighter: ports every 3 s while the panel is open and every 10 s otherwise, no `lsof`/`ps` per server per scan, and `simctl` only while a simulator can be running (plus a check every five minutes).
 - Site previews: turning them off stops pending captures at once; a failed capture is retried after 15 s instead of minutes; the hidden web view loads only localhost and cancels navigation elsewhere.
 - "Copy the full output" copies the whole log, and a button opens it.
 - Keyboard shortcuts another app already uses, Simulator focus without the Accessibility permission, and Open at login waiting for approval are now shown in Settings or on the row instead of failing silently. Simulator windows are matched by their full name.
 - History: an unreadable history file is moved aside (`history.corrupt-<date>.json`) instead of being erased by the next save; write errors are shown.
 - Removing, clearing or aging out a history entry now deletes its page picture and output log.
-- Secrets: variables with secret-looking names (now including `KEY`, `PASS`, `DATABASE_URL`, …) or values (URLs with passwords, private keys, tokens) are never saved, and old history files are cleaned when read. History, logs and pictures are private (`0600`/`0700`); logs are capped at 8 MB while running.
+- Secrets: variables with secret-looking names (now including `KEY`, `PASS`, `DATABASE_URL`, …) or values (URLs with passwords, private keys, tokens), and variables of the terminal, editor or agent session that started the server, are never saved, and old history files are cleaned when read. History, logs and pictures are private (`0600`/`0700`); logs are capped at 8 MB while running.
 - Edit Command no longer fills in a process title such as `next-server (v14)` as if it were a command.
 - "1 server" in Clear History; Next.js is only detected by program name, not any path containing "next".
 - `release.sh` writes a `.sha256` that `shasum -c` accepts next to the DMG.

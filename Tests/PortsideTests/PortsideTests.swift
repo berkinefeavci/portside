@@ -166,6 +166,16 @@ final class SavedEnvironmentTests: XCTestCase {
         XCTAssertEqual(Set(kept.keys), ["LOCAL", "MONKEY", "KEYBOARD"])
     }
 
+    func testVariablesOfTheStartingSessionAreNotKept() {
+        let kept = SavedEnvironment.filtered([
+            "PATH": "/usr/bin", "HOME": "/Users/me", "MY_FLAG": "1", "ANTHROPIC_BASE_URL": "http://localhost:8000",
+            "TERM_PROGRAM": "vscode", "VSCODE_GIT_IPC_HANDLE": "/tmp/x", "ITERM_PROFILE": "Default",
+            "CLAUDECODE": "1", "CLAUDE_CODE_USER_EMAIL": "me@example.com", "CODEX_THREAD_ID": "abc",
+            "TMUX_PANE": "%1", "SSH_CONNECTION": "1.2.3.4 22", "CODEX_TASK_WORKSPACE_VERIFYING_IDENTITY": "x",
+        ])
+        XCTAssertEqual(Set(kept.keys), ["PATH", "HOME", "MY_FLAG", "ANTHROPIC_BASE_URL"])
+    }
+
     func testMalformedNamesAndValuesAreDropped() {
         XCTAssertTrue(SavedEnvironment.filtered(["": "x", "A=B": "x", "OK": "a\0b", "FINE": "yes"]).keys.contains("FINE"))
         XCTAssertEqual(SavedEnvironment.filtered(["": "x", "A=B": "x", "OK": "a\0b"]).count, 0)
@@ -175,6 +185,8 @@ final class SavedEnvironmentTests: XCTestCase {
 final class BuildOutputTests: XCTestCase {
     func testGoRunAndCargoBinariesAreRecognisedByPath() {
         XCTAssertEqual(BuildOutput.kind(ofExecutable: "/private/var/folders/zz/abc/T/go-build2412837/b001/exe/api"), .goRun)
+        XCTAssertEqual(BuildOutput.kind(ofExecutable: "/Users/me/Library/Caches/go-build/f2/f270ae107b90f596ed04b3de70636c432220babfbffe0143aeca839510b16a96-d/api"), .goRun,
+                       "a repeated go run starts the linked copy from the build cache")
         XCTAssertEqual(BuildOutput.kind(ofExecutable: "/Users/me/api/target/debug/api"), .cargo)
         XCTAssertEqual(BuildOutput.kind(ofExecutable: "/Users/me/api/target/release/api --port 8080"), .cargo)
         XCTAssertEqual(BuildOutput.kind(ofExecutable: "/Users/me/api/target/aarch64-apple-darwin/release/api"), .cargo)
@@ -185,6 +197,7 @@ final class BuildOutputTests: XCTestCase {
         XCTAssertNil(BuildOutput.kind(ofExecutable: "/Applications/Spotify.app/Contents/MacOS/Spotify"))
         XCTAssertNil(BuildOutput.kind(ofExecutable: "/Users/me/target/debug-tools/foo"))
         XCTAssertNil(BuildOutput.kind(ofExecutable: "/usr/local/go/bin/go"))
+        XCTAssertNil(BuildOutput.kind(ofExecutable: "/Users/me/Library/Caches/go-build/trim.txt"))
     }
 
     func testBuilders() {
@@ -706,6 +719,23 @@ final class HistoryRecoveryTests: IsolatedStoreTestCase {
         HistoryStore.save(["a": entry("a")])
         XCTAssertEqual(permissions(HistoryStore.file), 0o600)
         XCTAssertEqual(permissions(HistoryStore.directory), 0o700)
+    }
+
+    func testFoldersFromEarlierVersionsAreTightenedButOnlyWhenAsked() throws {
+        let folder = HistoryStore.directory.appendingPathComponent("Previews")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+        let picture = folder.appendingPathComponent("abc.jpg")
+        try write("x", to: picture)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: picture.path)
+
+        // Writing into an existing folder doesn't change its mode...
+        try PrivateFiles.write(Data("y".utf8), to: folder.appendingPathComponent("new.jpg"))
+        XCTAssertEqual(permissions(folder), 0o755)
+
+        PrivateFiles.tighten(folders: [folder])
+        XCTAssertEqual(permissions(folder), 0o700)
+        XCTAssertEqual(permissions(picture), 0o600)
+        XCTAssertEqual(permissions(folder.appendingPathComponent("new.jpg")), 0o600)
     }
 
     func testWriteFailureIsReported() throws {

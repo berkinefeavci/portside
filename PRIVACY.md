@@ -16,9 +16,9 @@ Portside has no analytics, crash reporting or update checks of its own; "Check f
 
 Environment variables are filtered before they are saved, and again when an older history file is read (which is then rewritten without them):
 
-- by **name**: containing `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `PASSPHRASE`, `CREDENTIAL`, `PRIVATE`, `COOKIE`, `SESSION`, `AUTH`, `APIKEY`, `ACCESSKEY`, `DATABASE_URL`, `CONNECTION_STRING` or `JWT`, or having `KEY`, `KEYS`, `PASS`, `PWD`, `DSN`, `PAT` or `SALT` as a word (`AWS_ACCESS_KEY_ID`, `dbPass`), in any case;
+- by **name**: containing `SECRET`, `TOKEN`, `PASSWORD`, `PASSWD`, `PASSPHRASE`, `CREDENTIAL`, `PRIVATE`, `COOKIE`, `SESSION`, `AUTH`, `APIKEY`, `ACCESSKEY`, `DATABASE_URL`, `CONNECTION_STRING`, `JWT`, `BEARER` or `IDENTITY`, or having `KEY`, `KEYS`, `PASS`, `PWD`, `DSN`, `PAT` or `SALT` as a word (`AWS_ACCESS_KEY_ID`, `dbPass`), in any case;
 - by **value**, whatever the name: a URL with a password (`postgres://user:secret@host/db`), a private key, a JWT, or a well-known token format (`sk-…`, `ghp_…`, `xoxb-…`, `AKIA…`, …);
-- session-bound values such as `SSH_AUTH_SOCK`, `SSH_CONNECTION` and `TERM_SESSION_ID`.
+- session-bound values such as `SSH_AUTH_SOCK`, `SSH_CONNECTION` and `TERM_SESSION_ID`, and variables of the terminal, editor or coding agent that started the server (`TERM_PROGRAM*`, `ITERM_*`, `VSCODE_*`, `TMUX*`, `CLAUDE*`, `CODEX_*`, …), which don't belong to the server.
 
 Everything else (`PATH`, `PORT`, `NODE_ENV`, toolchain settings) is kept because a server may not start without it. Command-line arguments are not filtered.
 

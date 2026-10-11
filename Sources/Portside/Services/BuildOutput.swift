@@ -6,8 +6,10 @@ enum BuildOutput {
     case goRun
     case cargo
 
-    // `go run` builds into $TMPDIR/go-build123456/b001/exe/<name> and deletes it when it exits.
-    private static let goRunPattern = #"/go-build[0-9]+/b[0-9]+/exe/"#
+    // `go run` links into $TMPDIR/go-build123456/b001/exe/<name> and deletes it when it exits, or,
+    // when the same program was linked before, starts the copy in the build cache:
+    // ~/Library/Caches/go-build/f2/f270…a96-d/<name>.
+    private static let goRunPattern = #"/go-build[0-9]+/b[0-9]+/exe/|/go-build/[0-9a-f]{2}/[0-9a-f]{64}-d/"#
     // target/debug/<name>, target/release/<name>, target/<triple>/release/<name>, target/debug/deps/<name>
     private static let cargoPattern = #"/target/(?:[^/\s]+/)?(?:debug|release)/"#
 
