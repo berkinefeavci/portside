@@ -207,6 +207,15 @@ private final class WebSnapshotter: NSObject, PageCapturing, WKNavigationDelegat
 
     func capture(_ url: URL) async -> NSImage? {
         guard PreviewTarget.isLoopback(url) else { return nil }
+        let image = await takePicture(of: url)
+        // The data store lives as long as the web view: nothing one page stored (cookies,
+        // local storage, caches) may be there for the next one, which is another local server.
+        let store = webView.configuration.websiteDataStore
+        await store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
+        return image
+    }
+
+    private func takePicture(of url: URL) async -> NSImage? {
         window.setFrameOrigin(.zero)
         window.orderFrontRegardless()
         defer {
