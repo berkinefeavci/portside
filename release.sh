@@ -66,5 +66,6 @@ if $notarize; then
   spctl --assess --type open --context context:primary-signature --verbose "$dmg"
 fi
 
-shasum -a 256 "$dmg" | tee "$dmg.sha256"
+# From inside dist, so the .sha256 names the file next to it and `shasum -c` works there.
+(cd "$(dirname "$dmg")" && shasum -a 256 "$(basename "$dmg")" | tee "$(basename "$dmg").sha256")
 echo "==> $dmg"
