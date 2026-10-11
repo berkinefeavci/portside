@@ -104,3 +104,7 @@
 "Nothing running" = "Çalışan sunucu yok";
 "Pictures of each page, kept on this Mac" = "Her sayfanın görüntüsü, yalnız bu Mac'te";
 "Site previews" = "Site önizlemeleri";
+"The history file is damaged and couldn't be set aside, so it is left alone." = "Geçmiş dosyası bozuk ve kenara alınamadı, bu yüzden olduğu gibi bırakıldı.";
+"The history file couldn't be read, and it couldn't be set aside either." = "Geçmiş dosyası okunamadı ve kenara da alınamadı.";
+"The history file couldn't be read, so history starts empty. The original is kept as %@." = "Geçmiş dosyası okunamadı, geçmiş boş başlıyor. Asıl dosya %@ adıyla saklandı.";
+"Some history entries couldn't be read and were dropped. The original is kept as %@." = "Bazı geçmiş kayıtları okunamadı ve atlandı. Asıl dosya %@ adıyla saklandı.";

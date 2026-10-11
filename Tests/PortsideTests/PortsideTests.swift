@@ -609,3 +609,288 @@ final class ScanStateTests: XCTestCase {
         XCTAssertNil(state.restartStates[site.port])
     }
 }
+
+/// Each test gets its own history, picture and log folders.
+class IsolatedStoreTestCase: XCTestCase {
+    var temp: URL!
+    private var originalData: URL!
+    private var originalLogs: URL!
+
+    override func setUp() {
+        originalData = HistoryStore.directory
+        originalLogs = HistoryStore.logDirectory
+        temp = FileManager.default.temporaryDirectory.appendingPathComponent("PortsideTests-\(UUID().uuidString)")
+        HistoryStore.directory = temp.appendingPathComponent("Data")
+        HistoryStore.logDirectory = temp.appendingPathComponent("Logs")
+    }
+
+    override func tearDown() {
+        HistoryStore.directory = originalData
+        HistoryStore.logDirectory = originalLogs
+        try? FileManager.default.removeItem(at: temp)
+    }
+
+    func entry(_ id: String, name: String = "Site", seen: TimeInterval = 100, pinned: Bool = false,
+               environment: [String: String] = [:], executable: String? = "/bin/node") -> HistoryEntry {
+        HistoryEntry(
+            id: id, projectName: name, projectPath: "/p/\(id)", port: 3000, framework: .vite,
+            executable: executable, arguments: [id], environment: environment, displayCommand: "node \(id)",
+            customCommand: nil, firstSeen: Date(timeIntervalSince1970: seen), lastSeen: Date(timeIntervalSince1970: seen),
+            lastStopped: nil, lastStarted: nil, runCount: 1, isPinned: pinned
+        )
+    }
+
+    func permissions(_ url: URL) -> Int? {
+        try? FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? Int
+    }
+
+    func write(_ text: String, to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+}
+
+final class HistoryRecoveryTests: IsolatedStoreTestCase {
+    func testUnreadableFileIsSetAsideNotOverwritten() throws {
+        try write("{ this is not json", to: HistoryStore.file)
+
+        let result = HistoryStore.read()
+        XCTAssertTrue(result.entries.isEmpty)
+        XCTAssertNotNil(result.notice)
+        XCTAssertFalse(exists(HistoryStore.file), "the damaged file is moved away, not left to be overwritten")
+
+        HistoryStore.save(["a": entry("a")])
+        let names = try FileManager.default.contentsOfDirectory(atPath: HistoryStore.directory.path)
+        let aside = try XCTUnwrap(names.first { $0.hasPrefix("history.corrupt-") })
+        XCTAssertEqual(try String(contentsOf: HistoryStore.directory.appendingPathComponent(aside), encoding: .utf8), "{ this is not json")
+        XCTAssertEqual(HistoryStore.load().keys.sorted(), ["a"])
+    }
+
+    func testOneBrokenEntryDoesNotCostTheOthers() throws {
+        HistoryStore.save(["good": entry("good")])
+        var json = try String(contentsOf: HistoryStore.file, encoding: .utf8)
+        json = "[" + json.dropFirst().dropLast() + ", {\"id\": \"broken\", \"port\": \"not a number\"}]"
+        try write(json, to: HistoryStore.file)
+
+        let result = HistoryStore.read()
+        XCTAssertEqual(result.entries.keys.sorted(), ["good"])
+        XCTAssertNotNil(result.notice)
+        let names = try FileManager.default.contentsOfDirectory(atPath: HistoryStore.directory.path)
+        XCTAssertTrue(names.contains { $0.hasPrefix("history.corrupt-") }, "the original is kept for recovery")
+    }
+
+    func testMissingFileIsJustEmpty() {
+        let result = HistoryStore.read()
+        XCTAssertTrue(result.entries.isEmpty)
+        XCTAssertNil(result.notice)
+    }
+
+    func testSecretsFromOlderVersionsAreDroppedAndRewritten() throws {
+        HistoryStore.save(["a": entry("a", environment: ["PATH": "/usr/bin"])])
+        // What an older version would have written: a secret in the environment.
+        let json = try String(contentsOf: HistoryStore.file, encoding: .utf8)
+            .replacingOccurrences(of: "\"environment\" : {", with: "\"environment\" : { \"STRIPE_KEY\" : \"sk_live_abcdefghijklmnop\", \"DATABASE_URL\" : \"postgres:\\/\\/u:p@h\\/db\",")
+        try write(json, to: HistoryStore.file)
+        XCTAssertTrue(try String(contentsOf: HistoryStore.file, encoding: .utf8).contains("STRIPE_KEY"))
+
+        let loaded = HistoryStore.load()
+        XCTAssertEqual(loaded["a"]?.environment, ["PATH": "/usr/bin"])
+        let onDisk = try String(contentsOf: HistoryStore.file, encoding: .utf8)
+        XCTAssertFalse(onDisk.contains("STRIPE_KEY"))
+        XCTAssertFalse(onDisk.contains("postgres://"))
+    }
+
+    func testHistoryFileAndFolderArePrivate() {
+        HistoryStore.save(["a": entry("a")])
+        XCTAssertEqual(permissions(HistoryStore.file), 0o600)
+        XCTAssertEqual(permissions(HistoryStore.directory), 0o700)
+    }
+
+    func testWriteFailureIsReported() throws {
+        try FileManager.default.createDirectory(at: HistoryStore.directory, withIntermediateDirectories: true)
+        // A folder where the file should go.
+        try FileManager.default.createDirectory(at: HistoryStore.file, withIntermediateDirectories: true)
+        try write("x", to: HistoryStore.file.appendingPathComponent("blocker"))
+        XCTAssertNotNil(HistoryStore.save(["a": entry("a")]))
+    }
+}
+
+final class FilesFollowEntriesTests: IsolatedStoreTestCase {
+    @MainActor
+    private func addFiles(for entry: HistoryEntry) throws {
+        let key = HistoryEntry.fileKey(for: entry.id)
+        try write("jpeg", to: PreviewStore.file(for: key))
+        try write("output", to: LogFiles.url(for: entry))
+    }
+
+    @MainActor
+    private func hasFiles(of entry: HistoryEntry) -> (picture: Bool, log: Bool) {
+        (exists(PreviewStore.file(for: HistoryEntry.fileKey(for: entry.id))), exists(LogFiles.url(for: entry)))
+    }
+
+    @MainActor
+    func testForgettingAnEntryDeletesItsPictureAndLog() throws {
+        let state = AppState(polling: false)
+        let gone = entry("gone"), stays = entry("stays")
+        state.history = ["gone": gone, "stays": stays]
+        try addFiles(for: gone)
+        try addFiles(for: stays)
+
+        state.forget(gone)
+
+        XCTAssertEqual(hasFiles(of: gone).picture, false)
+        XCTAssertEqual(hasFiles(of: gone).log, false)
+        XCTAssertEqual(hasFiles(of: stays).picture, true)
+        XCTAssertEqual(hasFiles(of: stays).log, true)
+    }
+
+    @MainActor
+    func testClearingHistoryDeletesFilesOfEverythingButPinned() throws {
+        let state = AppState(polling: false)
+        let pinned = entry("pinned", pinned: true), other = entry("other")
+        state.history = ["pinned": pinned, "other": other]
+        try addFiles(for: pinned)
+        try addFiles(for: other)
+
+        state.clearHistory()
+
+        XCTAssertEqual(state.history.keys.sorted(), ["pinned"])
+        XCTAssertEqual(hasFiles(of: other).picture, false)
+        XCTAssertEqual(hasFiles(of: other).log, false)
+        XCTAssertEqual(hasFiles(of: pinned).picture, true)
+        XCTAssertEqual(hasFiles(of: pinned).log, true)
+    }
+
+    @MainActor
+    func testEntriesPastTheLimitTakeTheirFilesWithThem() throws {
+        let state = AppState(polling: false)
+        var all: [String: HistoryEntry] = [:]
+        for index in 0..<(HistoryStore.limit + 3) {
+            all["e\(index)"] = entry("e\(index)", seen: TimeInterval(index))
+        }
+        state.history = all
+        let oldest = try XCTUnwrap(all["e0"]), newest = try XCTUnwrap(all["e\(HistoryStore.limit + 2)"])
+        try addFiles(for: oldest)
+        try addFiles(for: newest)
+
+        state.togglePin(newest)   // any change saves the history, and the save applies the limit
+
+        XCTAssertEqual(state.history.count, HistoryStore.limit, "memory and file agree on what is kept")
+        XCTAssertNil(state.history["e0"])
+        XCTAssertEqual(hasFiles(of: oldest).picture, false)
+        XCTAssertEqual(hasFiles(of: oldest).log, false)
+        XCTAssertEqual(hasFiles(of: newest).picture, true)
+    }
+
+    @MainActor
+    func testOrphansAreRemovedAndOtherFilesAreLeftAlone() throws {
+        let kept = entry("kept"), orphan = entry("orphan")
+        try addFiles(for: kept)
+        try addFiles(for: orphan)
+        try write("not ours", to: HistoryStore.logDirectory.appendingPathComponent("notes.txt"))
+        try write("no key", to: HistoryStore.logDirectory.appendingPathComponent("plain.log"))
+
+        LogFiles.removeOrphans(keeping: [HistoryEntry.fileKey(for: "kept")])
+
+        XCTAssertEqual(hasFiles(of: orphan).picture, false)
+        XCTAssertEqual(hasFiles(of: orphan).log, false)
+        XCTAssertEqual(hasFiles(of: kept).log, true)
+        XCTAssertTrue(exists(HistoryStore.logDirectory.appendingPathComponent("notes.txt")))
+        XCTAssertTrue(exists(HistoryStore.logDirectory.appendingPathComponent("plain.log")))
+    }
+}
+
+final class LogFileTests: IsolatedStoreTestCase {
+    func testProjectNamesCannotLeaveTheLogFolder() {
+        let sneaky = entry("x", name: "../../.ssh/authorized_keys")
+        let url = LogFiles.url(for: sneaky)
+        XCTAssertEqual(url.deletingLastPathComponent().standardizedFileURL.path, HistoryStore.logDirectory.standardizedFileURL.path)
+        XCTAssertFalse(url.lastPathComponent.hasPrefix("."))
+        XCTAssertEqual(LogFiles.safeBase("My Site"), "My-Site")
+        XCTAssertEqual(LogFiles.safeBase("..."), "server")
+        XCTAssertEqual(LogFiles.safeBase("a/b\\c:d"), "a-b-c-d")
+    }
+
+    func testKeyIsTheLastDashSeparatedPart() {
+        let url = URL(fileURLWithPath: "/tmp/My-Cool-Site-1abc2d.log")
+        XCTAssertEqual(LogFiles.key(of: url), "1abc2d")
+        XCTAssertNil(LogFiles.key(of: URL(fileURLWithPath: "/tmp/notes.txt")))
+        XCTAssertNil(LogFiles.key(of: URL(fileURLWithPath: "/tmp/plain.log")))
+    }
+
+    func testALogStartedByPortsideIsPrivateAndHoldsTheOutput() async throws {
+        let server = try LaunchedServer(
+            executable: "/bin/echo", arguments: ["hello log"], directory: "/tmp", environment: [:], logName: "Test-abc"
+        )
+        for _ in 0..<100 where server.isRunning { try await Task.sleep(for: .milliseconds(20)) }
+
+        XCTAssertEqual(permissions(server.logURL), 0o600)
+        XCTAssertEqual(permissions(HistoryStore.logDirectory), 0o700)
+        XCTAssertEqual(LogFiles.contents(of: server.logURL), "hello log\n")
+    }
+
+    func testAnOversizedLogIsCutBackToItsEnd() throws {
+        let url = HistoryStore.logDirectory.appendingPathComponent("Big-abc.log")
+        try write(String(repeating: "x", count: 5_000) + "THE END", to: url)
+
+        LogFiles.trimIfNeeded(url, limit: 1_000, keeping: 100)
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(text.hasSuffix("THE END"))
+        XCTAssertEqual(text.count, 100)
+        // And the file is still open for a server that appends to it.
+        let appended = try PrivateFiles.openLog(url, truncating: false)
+        try appended.write(contentsOf: Data("!".utf8))
+        try appended.close()
+        XCTAssertTrue(try String(contentsOf: url, encoding: .utf8).hasSuffix("THE END!"))
+    }
+
+    func testContentsReadsTheWholeLogWithoutColourCodes() throws {
+        let url = HistoryStore.logDirectory.appendingPathComponent("Full-abc.log")
+        let lines = (1...40).map { "line \($0)" }
+        try write("\u{1B}[31m" + lines.joined(separator: "\n") + "\u{1B}[0m\n", to: url)
+
+        let text = try XCTUnwrap(LogFiles.contents(of: url))
+        XCTAssertEqual(text, lines.joined(separator: "\n") + "\n", "all 40 lines, not a 12-line tail")
+    }
+}
+
+final class LaunchSafetyTests: XCTestCase {
+    func testOnlyInstalledShellsAreUsedForCustomCommands() {
+        XCTAssertEqual(HistoryEntry.loginShell(saved: "/bin/bash"), "/bin/bash")
+        XCTAssertEqual(HistoryEntry.loginShell(saved: "/tmp/evil"), "/bin/zsh")
+        XCTAssertEqual(HistoryEntry.loginShell(saved: "bash"), "/bin/zsh")
+        XCTAssertEqual(HistoryEntry.loginShell(saved: nil), "/bin/zsh")
+    }
+}
+
+final class CustomCommandTests: IsolatedStoreTestCase {
+    @MainActor
+    func testSavingTheFilledInDetectedCommandIsNotACustomCommand() {
+        let state = AppState(polling: false)
+        let detected = entry("a")
+        state.history = ["a": detected]
+
+        state.setCustomCommand(detected.detectedShellCommand, for: detected)
+        XCTAssertNil(state.history["a"]?.customCommand)
+
+        state.setCustomCommand("npm run dev", for: detected)
+        XCTAssertEqual(state.history["a"]?.customCommand, "npm run dev")
+    }
+
+    @MainActor
+    func testAnEntryWithOnlyAProcessTitleHasNothingToFillIn() {
+        let titleOnly = entry("n", executable: nil)
+        XCTAssertNil(titleOnly.detectedShellCommand)
+        XCTAssertEqual(titleOnly.shellCommand, "node n", "display and search still show the title")
+
+        let state = AppState(polling: false)
+        state.history = ["n": titleOnly]
+        state.setCustomCommand("next-server (v14.2.3)", for: titleOnly)
+        XCTAssertEqual(state.history["n"]?.customCommand, "next-server (v14.2.3)", "what the user types is theirs; nothing was filled in")
+        state.setCustomCommand("", for: titleOnly)
+        XCTAssertNil(state.history["n"]?.customCommand)
+    }
+}

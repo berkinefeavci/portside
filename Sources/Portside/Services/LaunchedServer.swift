@@ -10,11 +10,8 @@ final class LaunchedServer {
 
     init(executable: String, arguments: [String], directory: String,
          environment saved: [String: String], logName: String) throws {
-        let fm = FileManager.default
-        try fm.createDirectory(at: HistoryStore.logDirectory, withIntermediateDirectories: true)
         logURL = HistoryStore.logDirectory.appendingPathComponent("\(logName).log")
-        fm.createFile(atPath: logURL.path, contents: nil)
-        let log = try FileHandle(forWritingTo: logURL)
+        let log = try PrivateFiles.openLog(logURL, truncating: true)
 
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
@@ -76,7 +73,7 @@ final class LaunchedServer {
         return Array(leadingWithTheError(cleaned).suffix(limit)).joined(separator: "\n")
     }
 
-    private static func stripANSI(_ text: String) -> String {
+    static func stripANSI(_ text: String) -> String {
         text.replacingOccurrences(of: #"\u001B\[[0-9;?]*[ -/]*[@-~]"#, with: "", options: .regularExpression)
     }
 

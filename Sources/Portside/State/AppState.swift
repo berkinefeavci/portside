@@ -9,7 +9,11 @@ final class AppState {
     var isInitialLoad = true
 
     /// Everything Portside has ever seen, keyed by `HistoryEntry.id`.
-    var history: [String: HistoryEntry] = HistoryStore.load()
+    var history: [String: HistoryEntry] = [:]
+
+    /// Why the history file could only be read in part, and why it couldn't be written; nil when all is well.
+    var historyNotice: String?
+    var historyWriteError: String?
 
     /// Running rows (by port) and history rows (by entry id) mid-action.
     var restartStates: [Int: ActionState] = [:]
@@ -62,7 +66,18 @@ final class AppState {
     @ObservationIgnored private var restartedPIDs: [Int: Int] = [:]
 
     init(polling: Bool = true) {
-        if polling { restartPolling(refreshingFirst: true) }
+        let loaded = HistoryStore.read()
+        history = loaded.entries
+        historyNotice = loaded.notice
+
+        guard polling else { return }
+        restartPolling(refreshingFirst: true)
+        // Pictures and logs of entries that no longer exist. Never when the history couldn't be read
+        // properly: then the files are all that is left of it.
+        if !loaded.entries.isEmpty, loaded.notice == nil {
+            let keys = Set(loaded.entries.keys.map(HistoryEntry.fileKey(for:)))
+            Task.detached(priority: .utility) { LogFiles.removeOrphans(keeping: keys) }
+        }
     }
 
     // MARK: - Derived
@@ -178,6 +193,7 @@ final class AppState {
         }
 
         launched = launched.filter { $0.value.isRunning || runningKeys.contains($0.key) }
+        for server in launched.values where server.isRunning { LogFiles.trimIfNeeded(server.logURL) }
         if isInitialLoad { isInitialLoad = false }
         refreshPreviews(maxAge: Self.backgroundPreviewAge)
     }
@@ -306,7 +322,7 @@ final class AppState {
         }
         if runningKeys != nowRunning { runningKeys = nowRunning }
 
-        if changed { HistoryStore.save(history) }
+        if changed { persist() }
     }
 
     /// Counts a run only when the process really is a new one.
@@ -332,14 +348,16 @@ final class AppState {
 
     func togglePin(_ entry: HistoryEntry) {
         history[entry.id]?.isPinned.toggle()
-        HistoryStore.save(history)
+        persist()
     }
 
     func setCustomCommand(_ command: String?, for entry: HistoryEntry) {
         let trimmed = command?.trimmingCharacters(in: .whitespacesAndNewlines)
-        history[entry.id]?.customCommand = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        // Saving the text that was filled in for the user, unchanged, is not a custom command.
+        let isDetected = trimmed == entry.detectedShellCommand
+        history[entry.id]?.customCommand = (trimmed?.isEmpty ?? true) || isDetected ? nil : trimmed
         openStates[entry.id] = nil
-        HistoryStore.save(history)
+        persist()
     }
 
     func forget(_ entry: HistoryEntry) {
@@ -347,15 +365,33 @@ final class AppState {
             openStates[entry.id] = nil
             history[entry.id] = nil
         }
-        PreviewStore.shared.forget(entryID: entry.id)
-        HistoryStore.save(history)
+        removeFiles(of: entry)
+        persist()
     }
 
     func clearHistory() {
         let kept = history.filter { $0.value.isPinned || runningKeys.contains($0.key) }
-        for id in history.keys where kept[id] == nil { PreviewStore.shared.forget(entryID: id) }
+        let dropped = history.filter { kept[$0.key] == nil }.values
         withAnimation(.easeOut(duration: 0.25)) { history = kept }
-        HistoryStore.save(history)
+        dropped.forEach(removeFiles(of:))
+        persist()
+    }
+
+    /// Writes the history, within its limit. Entries that don't fit any more go, with their picture and log.
+    private func persist() {
+        let kept = HistoryStore.trimmed(history, protecting: runningKeys)
+        if kept.count < history.count {
+            let dropped = history.filter { kept[$0.key] == nil }.values
+            history = kept
+            dropped.forEach(removeFiles(of:))
+        }
+        historyWriteError = HistoryStore.save(history)?.localizedDescription
+    }
+
+    /// An entry's page picture and output log are deleted with it.
+    private func removeFiles(of entry: HistoryEntry) {
+        PreviewStore.shared.forget(entryID: entry.id)
+        LogFiles.remove(entryKey: HistoryEntry.fileKey(for: entry.id))
     }
 
     func ignore(projectPath: String) {
@@ -411,7 +447,8 @@ final class AppState {
     private func launch(_ entry: HistoryEntry, command: (executable: String, arguments: [String])) async -> String? {
         let missing = await Task.detached { () -> String? in
             let fm = FileManager.default
-            if !fm.fileExists(atPath: entry.projectPath) {
+            var isDirectory: ObjCBool = false
+            if !fm.fileExists(atPath: entry.projectPath, isDirectory: &isDirectory) || !isDirectory.boolValue {
                 return String(localized: "The project folder is gone:\n\(entry.projectPath)")
             }
             if !fm.isExecutableFile(atPath: command.executable) {
@@ -454,14 +491,11 @@ final class AppState {
         return tail.isEmpty ? String(localized: "Running, but nothing is listening yet.") : tail
     }
 
-    static func logName(for entry: HistoryEntry) -> String {
-        let base = entry.projectName.replacingOccurrences(of: " ", with: "-")
-        return "\(base)-\(HistoryEntry.fileKey(for: entry.id))"
-    }
+    static func logName(for entry: HistoryEntry) -> String { LogFiles.name(for: entry) }
 
     func logURL(for entry: HistoryEntry) -> URL? {
         if let url = launched[entry.id]?.logURL { return url }
-        let url = HistoryStore.logDirectory.appendingPathComponent("\(Self.logName(for: entry)).log")
+        let url = LogFiles.url(for: entry)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
