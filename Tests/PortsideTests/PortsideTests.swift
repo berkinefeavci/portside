@@ -350,3 +350,144 @@ final class ShellTests: XCTestCase {
         XCTAssertEqual(Set((merged ?? "").split(separator: "\n")), ["out", "err"])
     }
 }
+
+@MainActor
+private final class StubCapturer: PageCapturing {
+    var results: [NSImage?]
+    var calls: [URL] = []
+    var holdFirst = false
+    private var gate: CheckedContinuation<Void, Never>?
+
+    init(results: [NSImage?] = []) { self.results = results }
+
+    func capture(_ url: URL) async -> NSImage? {
+        calls.append(url)
+        if holdFirst, calls.count == 1 { await withCheckedContinuation { gate = $0 } }
+        return results.isEmpty ? nil : results.removeFirst()
+    }
+
+    func release() {
+        gate?.resume()
+        gate = nil
+    }
+}
+
+final class PreviewStoreTests: XCTestCase {
+    private var original: URL!
+    private var temp: URL!
+    private var wasEnabled = true
+
+    @MainActor
+    override func setUp() {
+        original = HistoryStore.directory
+        temp = FileManager.default.temporaryDirectory.appendingPathComponent("PortsideTests-\(UUID().uuidString)")
+        HistoryStore.directory = temp
+        wasEnabled = PreviewStore.shared.isEnabled
+    }
+
+    @MainActor
+    override func tearDown() {
+        PreviewStore.shared.isEnabled = wasEnabled
+        HistoryStore.directory = original
+        try? FileManager.default.removeItem(at: temp)
+    }
+
+    @MainActor
+    private func picture() -> NSImage {
+        NSImage(size: NSSize(width: 4, height: 4), flipped: false) { rect in
+            NSColor.blue.setFill(); rect.fill(); return true
+        }
+    }
+
+    @MainActor
+    private func settle(_ store: PreviewStore) async {
+        for _ in 0..<300 where !store.isIdle { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    @MainActor
+    private func waitForFirstCall(_ stub: StubCapturer) async {
+        for _ in 0..<300 where stub.calls.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    @MainActor
+    func testTurningPreviewsOffStopsQueuedCaptures() async throws {
+        let stub = StubCapturer(results: [picture(), picture(), picture()])
+        stub.holdFirst = true
+        let store = PreviewStore(capturer: stub)
+        store.isEnabled = true
+
+        for (index, port) in [3001, 3002, 3003].enumerated() {
+            store.capture(entryID: "entry-\(index)", port: port, maxAge: 60)
+        }
+        await waitForFirstCall(stub)
+        XCTAssertEqual(stub.calls.count, 1, "one page at a time")
+
+        store.isEnabled = false
+        store.removeAll()
+        stub.release()
+        await settle(store)
+
+        XCTAssertEqual(stub.calls.count, 1, "the queued pages must not be loaded after previews are switched off")
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: PreviewStore.directory.path)) ?? []
+        XCTAssertTrue(files.isEmpty, "nothing is written after switching off: \(files)")
+    }
+
+    @MainActor
+    func testFailedCaptureIsRetriedSoonAndASuccessIsNotRepeated() async throws {
+        var clock = Date(timeIntervalSince1970: 1_000_000)
+        let stub = StubCapturer(results: [nil, picture()])
+        let store = PreviewStore(capturer: stub, now: { clock })
+        store.isEnabled = true
+
+        store.capture(entryID: "site", port: 5173, maxAge: 300)
+        await settle(store)
+        XCTAssertEqual(stub.calls.count, 1)
+
+        store.capture(entryID: "site", port: 5173, maxAge: 300)
+        XCTAssertEqual(stub.calls.count, 1, "backing off right after a failure")
+
+        clock.addTimeInterval(16)
+        store.capture(entryID: "site", port: 5173, maxAge: 300)
+        await settle(store)
+        XCTAssertEqual(stub.calls.count, 2, "retried well before maxAge")
+        XCTAssertTrue(store.hasImage(for: "site"))
+
+        clock.addTimeInterval(60)
+        store.capture(entryID: "site", port: 5173, maxAge: 300)
+        XCTAssertEqual(stub.calls.count, 2, "a successful capture counts from the success")
+    }
+
+    @MainActor
+    func testForgettingAnEntryDuringItsCaptureWritesNothing() async throws {
+        let stub = StubCapturer(results: [picture()])
+        stub.holdFirst = true
+        let store = PreviewStore(capturer: stub)
+        store.isEnabled = true
+
+        store.capture(entryID: "gone", port: 4000, maxAge: 60)
+        await waitForFirstCall(stub)
+        store.forget(entryID: "gone")
+        stub.release()
+        await settle(store)
+
+        XCTAssertFalse(store.hasImage(for: "gone"))
+    }
+
+    @MainActor
+    func testRetryDelayDoublesUpToAFiveMinuteCap() {
+        XCTAssertEqual((1...8).map { PreviewStore.retryDelay(afterFailures: $0) }, [15, 30, 60, 120, 240, 300, 300, 300])
+    }
+
+    func testOnlyLoopbackPagesAreAllowed() {
+        for allowed in ["http://localhost:3000/", "http://127.0.0.1:8080/x", "http://[::1]:5173/", "https://localhost/"] {
+            XCTAssertTrue(PreviewTarget.isLoopback(URL(string: allowed)!), allowed)
+        }
+        for refused in ["http://example.com/", "http://localhost.evil.com/", "http://192.168.1.5:3000/",
+                        "file:///etc/passwd", "ftp://localhost/", "http://127.0.0.1.nip.io/"] {
+            XCTAssertFalse(PreviewTarget.isLoopback(URL(string: refused)!), refused)
+        }
+        XCTAssertNil(PreviewTarget.url(port: 0))
+        XCTAssertNil(PreviewTarget.url(port: 70_000))
+        XCTAssertEqual(PreviewTarget.url(port: 3000)?.absoluteString, "http://localhost:3000/")
+    }
+}
