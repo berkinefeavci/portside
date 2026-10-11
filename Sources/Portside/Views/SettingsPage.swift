@@ -8,6 +8,8 @@ struct SettingsPage: View {
     @Environment(AppState.self) private var appState
     @State private var launchAtLogin = LoginItem.isEnabled
     @State private var shortcuts = HotKeys.isEnabled
+    @State private var shortcutsUnavailable = HotKeys.isUnavailable
+    @State private var loginNeedsApproval = LoginItem.needsApproval
     @State private var previews = PreviewStore.shared.isEnabled
     @State private var failure: String?
     @State private var accessibilityTrusted = AXAccess.isTrusted
@@ -29,6 +31,12 @@ struct SettingsPage: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
             }
+            if loginNeedsApproval {
+                PanelDivider()
+                PanelRow("Open Login Items Settings", detail: String(localized: "Needs approval")) {
+                    LoginItem.openSettings()
+                }
+            }
             PanelDivider()
 
             PanelToggleRow("Open in browser after reopening", isOn: $appState.openBrowserAfterReopen)
@@ -38,7 +46,10 @@ struct SettingsPage: View {
             PanelDivider()
 
             PanelToggleRow("Keyboard shortcuts",
-                           note: "⌃⌥⌘P panel · ⌃⌥⌘T reopen last closed",
+                           note: shortcutsUnavailable
+                               ? "Unavailable: used by another app"
+                               : "⌃⌥⌘P panel · ⌃⌥⌘T reopen last closed",
+                           noteColor: shortcutsUnavailable ? Color.alert : .secondary,
                            isOn: $shortcuts)
             PanelDivider()
 
@@ -61,6 +72,16 @@ struct SettingsPage: View {
             PanelRow("Show History File") {
                 NSWorkspace.shared.activateFileViewerSelecting([HistoryStore.file])
             }
+            if let problem = appState.historyWriteError ?? appState.historyNotice {
+                Text(verbatim: problem)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.alert)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 6)
+            }
             PanelDivider()
             PanelRow("Show Output Logs") {
                 try? FileManager.default.createDirectory(at: HistoryStore.logDirectory, withIntermediateDirectories: true)
@@ -76,7 +97,10 @@ struct SettingsPage: View {
             PanelRow("Quit Portside") { NSApplication.shared.terminate(nil) }
         }
         .onChange(of: launchAtLogin) { _, enabled in apply(enabled) }
-        .onChange(of: shortcuts) { _, enabled in HotKeys.isEnabled = enabled }
+        .onChange(of: shortcuts) { _, enabled in
+            HotKeys.isEnabled = enabled
+            shortcutsUnavailable = HotKeys.isUnavailable
+        }
         .onChange(of: previews) { _, enabled in
             PreviewStore.shared.isEnabled = enabled
             if enabled {
@@ -89,7 +113,9 @@ struct SettingsPage: View {
             guard visible else { return }
             accessibilityTrusted = AXAccess.isTrusted
             launchAtLogin = LoginItem.isEnabled
+            loginNeedsApproval = LoginItem.needsApproval
             shortcuts = HotKeys.isEnabled
+            shortcutsUnavailable = HotKeys.isUnavailable
         }
     }
 
@@ -100,8 +126,10 @@ struct SettingsPage: View {
             failure = nil
         } catch {
             failure = error.localizedDescription
-            launchAtLogin = LoginItem.isEnabled
         }
+        // Registering can succeed and still wait for the user's approval in System Settings.
+        loginNeedsApproval = LoginItem.needsApproval
+        launchAtLogin = LoginItem.isEnabled
     }
 }
 

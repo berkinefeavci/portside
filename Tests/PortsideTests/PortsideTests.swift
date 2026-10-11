@@ -894,3 +894,27 @@ final class CustomCommandTests: IsolatedStoreTestCase {
         XCTAssertNil(state.history["n"]?.customCommand)
     }
 }
+
+final class SimulatorWindowMatchTests: XCTestCase {
+    func testTheWholeNameBeforeTheSeparatorWins() {
+        let titles = ["iPhone 15 Pro Max – iOS 17.5", "iPhone 15 Pro – iOS 17.5", "iPhone 15 – iOS 17.5"]
+        XCTAssertEqual(SimulatorWindowMatch.index(in: titles, name: "iPhone 15", runtime: "iOS 17.5"), 2,
+                       "'iPhone 15' is part of the other titles too")
+        XCTAssertEqual(SimulatorWindowMatch.index(in: titles, name: "iPhone 15 Pro", runtime: "iOS 17.5"), 1)
+    }
+
+    func testSameNameOnTwoRuntimesUsesTheRuntime() {
+        let titles = ["iPhone 15 – iOS 16.4", "iPhone 15 – iOS 17.5"]
+        XCTAssertEqual(SimulatorWindowMatch.index(in: titles, name: "iPhone 15", runtime: "iOS 17.5"), 1)
+    }
+
+    func testOlderTitlesAreJustTheName() {
+        XCTAssertEqual(SimulatorWindowMatch.index(in: ["iPad Air", "iPhone 15"], name: "iPhone 15", runtime: "iOS 17.5"), 1)
+    }
+
+    func testAmbiguousOrMissingMatchPicksNothing() {
+        XCTAssertNil(SimulatorWindowMatch.index(in: ["iPhone 15 – iOS 16.4", "iPhone 15 – iOS 17.5"], name: "iPhone 15", runtime: "iOS 18.0"))
+        XCTAssertNil(SimulatorWindowMatch.index(in: ["iPhone 15 Pro – iOS 17.5"], name: "iPhone 15", runtime: "iOS 17.5"))
+        XCTAssertNil(SimulatorWindowMatch.index(in: [], name: "iPhone 15", runtime: "iOS 17.5"))
+    }
+}

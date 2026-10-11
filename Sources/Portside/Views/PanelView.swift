@@ -167,7 +167,7 @@ private extension PanelView {
                 CardGrid(items: servers) { RunningCard(server: $0) }
                 FailureNotes(failures: servers.compactMap { server in
                     guard case .failed(let message) = appState.restartStates[server.port] else { return nil }
-                    return ("\(server.port)", server.projectName, message)
+                    return ("\(server.port)", server.projectName, message, appState.logURL(forRowOf: server))
                 })
             }
         }
@@ -182,7 +182,7 @@ private extension PanelView {
                 CardGrid(items: closed) { ClosedCard(entry: $0) }
                 FailureNotes(failures: closed.compactMap { entry in
                     guard case .failed(let message) = appState.openStates[entry.id] else { return nil }
-                    return (entry.id, entry.projectName, message)
+                    return (entry.id, entry.projectName, message, appState.logURL(for: entry))
                 })
             }
         }

@@ -132,7 +132,8 @@ struct HistoryPage: View {
             .padding(.horizontal, 16)
             .frame(height: 34)
         } else {
-            PanelRow("Clear History…", detail: String(localized: "\(appState.allHistory.count) servers")) {
+            let count = appState.allHistory.count
+            PanelRow("Clear History…", detail: count == 1 ? String(localized: "1 server") : String(localized: "\(count) servers")) {
                 confirmClear = true
             }
         }

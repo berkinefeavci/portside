@@ -22,7 +22,7 @@ struct HistoryRowView: View {
             header
 
             if let failureMessage {
-                FailureBox(message: failureMessage)
+                FailureBox(message: failureMessage, logURL: appState.logURL(for: entry))
                     .padding(.leading, HoverRowStyle.horizontalPadding + ColorBar.gutter)
                     .padding(.trailing, HoverRowStyle.horizontalPadding)
                     .transition(.opacity)

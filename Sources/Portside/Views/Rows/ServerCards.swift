@@ -285,7 +285,7 @@ struct CardGrid<Item: Identifiable, Card: View>: View {
 
 /// Full error text under the grid; a card is too narrow to read it.
 struct FailureNotes: View {
-    let failures: [(id: String, title: String, message: String)]
+    let failures: [(id: String, title: String, message: String, log: URL?)]
 
     var body: some View {
         if !failures.isEmpty {
@@ -295,7 +295,7 @@ struct FailureNotes: View {
                         Text(verbatim: failure.title)
                             .font(.system(size: 10.5, weight: .semibold))
                             .foregroundStyle(Color.alert)
-                        FailureBox(message: failure.message)
+                        FailureBox(message: failure.message, logURL: failure.log)
                     }
                 }
             }

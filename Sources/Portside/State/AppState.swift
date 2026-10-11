@@ -19,6 +19,8 @@ final class AppState {
     var restartStates: [Int: ActionState] = [:]
     var openStates: [String: ActionState] = [:]
     var simulatorRestartStates: [String: ActionState] = [:]
+    /// A short word about a simulator row that isn't a failure (it couldn't be brought to the front).
+    var simulatorNotes: [String: String] = [:]
 
     /// The history entry whose command is open in the editor page, if any.
     var editingEntryID: String?

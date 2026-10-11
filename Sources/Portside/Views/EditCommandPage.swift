@@ -44,12 +44,12 @@ struct EditCommandPage: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if entry.executable != nil {
+                    if let detected = entry.detectedShellCommand {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Detected command")
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundStyle(.secondary)
-                            Text(verbatim: detectedCommand(entry))
+                            Text(verbatim: detected)
                                 .font(.system(size: 10, design: .monospaced))
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(3)
@@ -88,15 +88,11 @@ struct EditCommandPage: View {
         }
     }
 
+    /// Starts from the command in use. An entry with only a process title (`next-server (v14)`)
+    /// has no runnable command to start from, so the box is empty rather than filled with that.
     private func load() {
         guard let entry else { return }
-        text = entry.hasCustomCommand ? (entry.customCommand ?? "") : detectedCommand(entry)
-    }
-
-    private func detectedCommand(_ entry: HistoryEntry) -> String {
-        var detected = entry
-        detected.customCommand = nil
-        return detected.shellCommand
+        text = entry.hasCustomCommand ? (entry.customCommand ?? "") : (entry.detectedShellCommand ?? "")
     }
 }
 

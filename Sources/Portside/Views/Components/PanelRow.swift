@@ -67,11 +67,13 @@ struct PanelStatusRow: View {
 struct PanelToggleRow: View {
     private let title: LocalizedStringKey
     private let note: LocalizedStringKey?
+    private let noteColor: Color
     private let isOn: Binding<Bool>
 
-    init(_ title: LocalizedStringKey, note: LocalizedStringKey? = nil, isOn: Binding<Bool>) {
+    init(_ title: LocalizedStringKey, note: LocalizedStringKey? = nil, noteColor: Color = .secondary, isOn: Binding<Bool>) {
         self.title = title
         self.note = note
+        self.noteColor = noteColor
         self.isOn = isOn
     }
 
@@ -84,7 +86,7 @@ struct PanelToggleRow: View {
                 if let note {
                     Text(note)
                         .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(noteColor)
                         .lineLimit(1)
                 }
             }

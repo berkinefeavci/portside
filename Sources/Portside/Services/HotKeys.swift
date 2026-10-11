@@ -15,6 +15,10 @@ enum HotKeys {
     private static var references: [EventHotKeyRef] = []
     private static var eventHandler: EventHandlerRef?
 
+    /// True when macOS refused a shortcut (another app has it): Settings says so instead of
+    /// showing a switch that is on and does nothing.
+    private(set) static var isUnavailable = false
+
     static var isEnabled: Bool {
         get { Defaults.bool("globalShortcuts", default: false) }
         set {
@@ -38,6 +42,8 @@ enum HotKeys {
             if RegisterEventHotKey(UInt32(key), modifiers, id, GetApplicationEventTarget(), 0, &reference) == noErr,
                let reference {
                 references.append(reference)
+            } else {
+                isUnavailable = true
             }
         }
     }
@@ -45,6 +51,7 @@ enum HotKeys {
     private static func unregister() {
         references.forEach { UnregisterEventHotKey($0) }
         references.removeAll()
+        isUnavailable = false
     }
 
     private static func installEventHandler() {

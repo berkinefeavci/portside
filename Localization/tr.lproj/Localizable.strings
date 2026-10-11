@@ -108,3 +108,8 @@
 "The history file couldn't be read, and it couldn't be set aside either." = "Geçmiş dosyası okunamadı ve kenara da alınamadı.";
 "The history file couldn't be read, so history starts empty. The original is kept as %@." = "Geçmiş dosyası okunamadı, geçmiş boş başlıyor. Asıl dosya %@ adıyla saklandı.";
 "Some history entries couldn't be read and were dropped. The original is kept as %@." = "Bazı geçmiş kayıtları okunamadı ve atlandı. Asıl dosya %@ adıyla saklandı.";
+"1 server" = "1 sunucu";
+"Open Login Items Settings" = "Oturum açma öğeleri ayarlarını aç";
+"Needs approval" = "Onay bekliyor";
+"Unavailable: used by another app" = "Kullanılamıyor: başka uygulamada";
+"To show this simulator, allow Portside in Accessibility settings." = "Bu simülatörü göstermek için Portside'a Erişilebilirlik ayarlarında izin ver.";

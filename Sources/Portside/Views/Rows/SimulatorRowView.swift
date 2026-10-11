@@ -24,6 +24,14 @@ struct SimulatorRowView: View {
                     .padding(.leading, HoverRowStyle.horizontalPadding + ColorBar.gutter)
                     .padding(.trailing, HoverRowStyle.horizontalPadding)
                     .transition(.opacity)
+            } else if let note = appState.simulatorNotes[simulator.id] {
+                Text(verbatim: note)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, HoverRowStyle.horizontalPadding + ColorBar.gutter)
+                    .padding(.trailing, HoverRowStyle.horizontalPadding)
+                    .transition(.opacity)
             }
         }
         .animation(.easeOut(duration: 0.2), value: failureMessage)
