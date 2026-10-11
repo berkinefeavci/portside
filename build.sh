@@ -16,8 +16,6 @@ for argument in "$@"; do
   esac
 done
 
-swift build -c release --arch arm64 --arch x86_64
-
 # The compiler also writes every localizable key it sees (Text("…"), String(localized:), …)
 # so check-localizations can compare them with Localization/*.lproj. This is a separate,
 # single-architecture build: the universal one goes through Xcode's build system, which
@@ -26,6 +24,10 @@ swift build -c release --arch arm64 --arch x86_64
 swift build -c release \
   -Xswiftc -emit-localized-strings -Xswiftc -emit-localized-strings-path -Xswiftc "$PWD/.build/localized-strings"
 xcrun swift Tools/check-localizations.swift .build/localized-strings Localization
+
+# The universal build runs last: the single-architecture build above writes to the same
+# products folder and would otherwise replace the universal binary with an arm64-only one.
+swift build -c release --arch arm64 --arch x86_64
 
 $compile_only && exit 0
 
