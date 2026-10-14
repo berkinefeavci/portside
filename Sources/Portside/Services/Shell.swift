@@ -33,11 +33,11 @@ enum Shell {
             if let developerDirectory { env["DEVELOPER_DIR"] = developerDirectory }
             process.environment = env
 
-            let job = Job(process: process, continuation: continuation)
+            let reader = pipe.fileHandleForReading
+            let job = Job(process: process, reader: reader, continuation: continuation)
 
             // Drain the pipe while the child runs: waiting for the exit first deadlocks as soon
             // as the output outgrows the pipe buffer (`ps -A`, `launchctl list`).
-            let reader = pipe.fileHandleForReading
             reader.readabilityHandler = { handle in
                 let chunk = handle.availableData
                 if chunk.isEmpty {
@@ -53,9 +53,14 @@ enum Shell {
                 try process.run()
             } catch {
                 reader.readabilityHandler = nil
+                try? pipe.fileHandleForWriting.close()
                 job.finish(nil)
                 return
             }
+            // Our copy of the write end must go now: until it does, EOF never reaches the reader
+            // (every call then waited for the 0.5 s fallback) and both fds leak, since no
+            // autorelease pool drains on this thread.
+            try? pipe.fileHandleForWriting.close()
             job.armWatchdog(after: timeout, reader: reader)
         }
     }
@@ -66,14 +71,16 @@ enum Shell {
 private final class Job: @unchecked Sendable {
     private let lock = NSLock()
     private let process: Process
+    private let reader: FileHandle
     private var continuation: CheckedContinuation<String?, Never>?
     private var output = Data()
     private var hasExited = false
     private var isDrained = false
     private var watchdog: DispatchWorkItem?
 
-    init(process: Process, continuation: CheckedContinuation<String?, Never>) {
+    init(process: Process, reader: FileHandle, continuation: CheckedContinuation<String?, Never>) {
         self.process = process
+        self.reader = reader
         self.continuation = continuation
     }
 
@@ -127,7 +134,10 @@ private final class Job: @unchecked Sendable {
             defer { continuation = nil }
             return continuation
         }
-        pending?.resume(returning: result)
+        guard let pending else { return }
+        reader.readabilityHandler = nil
+        try? reader.close()
+        pending.resume(returning: result)
     }
 
     private func text() -> String? {
