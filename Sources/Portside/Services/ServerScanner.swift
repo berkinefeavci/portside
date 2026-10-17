@@ -8,12 +8,15 @@ enum ServerScanner {
         "next-serv", "uvicorn", "gunicorn", "puma", "hugo", "caddy"
     ]
 
-    /// A listening process is a dev server if it is a known runtime, or a program that
-    /// `go run` / `cargo run` built (those have arbitrary names; see `BuildOutput`).
+    /// A listening process is a dev server if it is a known runtime, or a program built from a Go or
+    /// Rust project (`go run`, `cargo run`, or compiled by hand): those have arbitrary names, so they
+    /// are recognised by where the binary lives (see `BuildOutput`).
     static func isDevServer(_ port: ListeningPort) -> Bool {
         let command = port.command.lowercased()
         if devCommands.contains(command) || command.hasPrefix("python3.") { return true }
-        return ProcessResolver.executablePath(of: port.pid).flatMap(BuildOutput.kind(ofExecutable:)) != nil
+        guard let executable = ProcessResolver.executablePath(of: port.pid) else { return false }
+        return BuildOutput.kind(ofExecutable: executable) != nil
+            || BuildOutput.isProjectBinary(executable, in: ProcessResolver.currentDirectory(of: port.pid))
     }
 
     /// nil when the ports couldn't be listed: the caller keeps what it had instead of
