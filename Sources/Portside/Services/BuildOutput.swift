@@ -20,6 +20,16 @@ enum BuildOutput {
         return nil
     }
 
+    /// A program compiled inside the Go or Rust project it runs from (`go build -o bin/api`, air's
+    /// `tmp/main`, a release binary copied to `dist/`): any name, but it lives in the project folder.
+    static func isProjectBinary(
+        _ executable: String, in directory: String?,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> Bool {
+        guard let directory, directory != "/", executable.hasPrefix(directory + "/") else { return false }
+        return ["go.mod", "Cargo.toml"].contains { fileExists(directory + "/" + $0) }
+    }
+
     /// The command that builds and starts such a program, so it is the right thing to run again.
     static func isBuilder(_ executable: String) -> Bool {
         ["go", "cargo", "cargo-watch"].contains((executable as NSString).lastPathComponent)

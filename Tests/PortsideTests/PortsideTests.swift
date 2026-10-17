@@ -200,6 +200,23 @@ final class BuildOutputTests: XCTestCase {
         XCTAssertNil(BuildOutput.kind(ofExecutable: "/Users/me/Library/Caches/go-build/trim.txt"))
     }
 
+    func testBinariesBuiltInsideAGoOrRustProjectAreRecognisedByWhereTheyRun() {
+        func recognised(_ executable: String, in directory: String?, files: Set<String>) -> Bool {
+            BuildOutput.isProjectBinary(executable, in: directory, fileExists: { files.contains($0) })
+        }
+        // `go build -o bin/api`, air's tmp/main, a release binary copied to ./dist: any name, inside the project.
+        XCTAssertTrue(recognised("/p/api/bin/api", in: "/p/api", files: ["/p/api/go.mod"]))
+        XCTAssertTrue(recognised("/p/api/tmp/main", in: "/p/api", files: ["/p/api/go.mod"]))
+        XCTAssertTrue(recognised("/p/svc/dist/svc", in: "/p/svc", files: ["/p/svc/Cargo.toml"]))
+
+        XCTAssertFalse(recognised("/opt/homebrew/bin/postgres", in: "/p/api", files: ["/p/api/go.mod"]),
+                       "a program from elsewhere is not the project's own")
+        XCTAssertFalse(recognised("/p/apix/bin/api", in: "/p/api", files: ["/p/api/go.mod"]), "a sibling folder is not inside it")
+        XCTAssertFalse(recognised("/p/web/bin/tool", in: "/p/web", files: ["/p/web/package.json"]), "no Go or Rust manifest")
+        XCTAssertFalse(recognised("/p/api/bin/api", in: nil, files: ["/p/api/go.mod"]))
+        XCTAssertFalse(recognised("/bin/api", in: "/", files: ["/go.mod"]))
+    }
+
     func testBuilders() {
         XCTAssertTrue(BuildOutput.isBuilder("/opt/homebrew/bin/go"))
         XCTAssertTrue(BuildOutput.isBuilder("/Users/me/.cargo/bin/cargo"))
@@ -348,6 +365,21 @@ final class ShellTests: XCTestCase {
         let output = await Shell.run("/bin/sleep", arguments: ["30"], timeout: 0.5)
         XCTAssertNil(output)
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+    }
+
+    func testRunsDoNotLeakFileDescriptors() async {
+        func openDescriptors() -> Int { (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? 0 }
+        _ = await Shell.run("/bin/echo")
+        let before = openDescriptors()
+        for _ in 0..<40 { _ = await Shell.run("/bin/echo", arguments: ["x"]) }
+        XCTAssertLessThan(openDescriptors() - before, 5, "each run used to leave both ends of its pipe open")
+    }
+
+    func testAGrandchildKeepingThePipeOpenDoesNotHoldUpTheResult() async {
+        let started = Date()
+        let output = await Shell.run("/bin/sh", arguments: ["-c", "echo out; sleep 3 &"], timeout: 20)
+        XCTAssertEqual(output, "out\n")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2.5)
     }
 
     func testMissingProgramIsNil() async {

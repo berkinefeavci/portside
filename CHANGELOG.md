@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Go and Rust programs you compiled yourself (`go build -o bin/api`, air's `tmp/main`, a release binary in `dist/`) are listed too, when they run from a folder with a `go.mod` or `Cargo.toml` and live inside it.
 - A failed restart stays on its card, with the reason, until you dismiss it, and can be retried from there.
 - Go and Cargo servers (`go run`, `cargo run`) are found and restarted with `go run` / `cargo run`.
 - Scanning can no longer freeze on a command with a lot of output or one that hangs, and a scan that fails keeps what is shown instead of reporting every server as stopped.
