@@ -350,6 +350,21 @@ final class ShellTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
     }
 
+    func testRunsDoNotLeakFileDescriptors() async {
+        func openDescriptors() -> Int { (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? 0 }
+        _ = await Shell.run("/bin/echo")
+        let before = openDescriptors()
+        for _ in 0..<40 { _ = await Shell.run("/bin/echo", arguments: ["x"]) }
+        XCTAssertLessThan(openDescriptors() - before, 5, "each run used to leave both ends of its pipe open")
+    }
+
+    func testAGrandchildKeepingThePipeOpenDoesNotHoldUpTheResult() async {
+        let started = Date()
+        let output = await Shell.run("/bin/sh", arguments: ["-c", "echo out; sleep 3 &"], timeout: 20)
+        XCTAssertEqual(output, "out\n")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2.5)
+    }
+
     func testMissingProgramIsNil() async {
         let output = await Shell.run("/nonexistent/program")
         XCTAssertNil(output)
